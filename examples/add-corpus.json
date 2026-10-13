@@ -1,0 +1,12 @@
+{
+  "standards": {
+    "enabled": true,
+    "server": "lancedb-standards",
+    "description": "Committed standards and API design notes",
+    "parser": "source",
+    "source_kind": "reference",
+    "include": ["standards/**", "docs/api/**"],
+    "exclude": ["**/README.md"],
+    "extensions": [".md", ".rst", ".txt"]
+  }
+}

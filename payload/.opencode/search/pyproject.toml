@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
+
+[project]
+name = "repository-agent-search"
+version = "0.1.0"
+description = "Repository-isolated committed-source LanceDB/MCP integration"
+requires-python = ">=3.12"
+dependencies = [
+    "lancedb==0.21.2",
+    "pandas==2.2.3",
+    "mcp[cli]==1.6.0",
+    "sentence-transformers==4.1.0",
+    "torch==2.7.0",
+    "tree-sitter>=0.25,<0.26",
+    "tree-sitter-rust>=0.24,<0.25",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = []
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

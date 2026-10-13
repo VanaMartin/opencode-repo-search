@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
+
+# Isolated Python environments and generated caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Package/build output
+node_modules/
+dist/
+build/
+*.tgz
+
+# Host-local search state
+*.lance/
+*.sock
+
+# macOS metadata
+.DS_Store
+._*
+
+# Editor swap and backup files
+*.sw?
+*~

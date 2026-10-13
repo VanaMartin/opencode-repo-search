@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
+
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "UP", "B"]
