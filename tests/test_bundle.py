@@ -7,6 +7,7 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 import asyncio
 import copy
 import json
+import signal
 import subprocess
 import sys
 import time
@@ -534,6 +535,54 @@ def test_six_installed_mcp_proxies_share_model_and_automatically_refresh(repos, 
             assert all(detail["service"]["loaded_models"] == 1 for detail in details)
         health = probe(db)
         assert all(value["mounts"] == 0 for value in health["corpora"].values()), health
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("during_shutdown", [False, True], ids=["active", "teardown"])
+def test_mcp_sigterm_releases_lease_during_serving_and_teardown(
+    repos, tmp_path, monkeypatch, during_shutdown
+):
+    from repo_search import mcp
+
+    _, worker, _ = repos
+    source = MainSource.discover(worker)
+
+    async def exercise():
+        loop = asyncio.get_running_loop()
+        handlers = {}
+        mounted = asyncio.Event()
+        released = asyncio.Event()
+
+        class Client:
+            async def call(self, operation):
+                assert operation == "mount"
+                mounted.set()
+
+            async def close(self):
+                if during_shutdown:
+                    loop.call_soon(handlers[signal.SIGTERM])
+                await asyncio.sleep(0)
+                released.set()
+
+        monkeypatch.setattr(mcp, "SearchClient", lambda *args: Client())
+        monkeypatch.setattr(
+            loop, "add_signal_handler", lambda signum, callback: handlers.update({signum: callback})
+        )
+        monkeypatch.setattr(loop, "remove_signal_handler", lambda signum: True)
+        server = mcp.create_server(source, tmp_path / "db", source.table)
+        cancelled = False
+        try:
+            async with asyncio.timeout(2):
+                async with server._mcp_server.lifespan(server._mcp_server):
+                    await mounted.wait()
+                    if not during_shutdown:
+                        handlers[signal.SIGTERM]()
+                        await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            cancelled = True
+        assert released.is_set(), "SIGTERM interrupted the lease-release RPC"
+        assert cancelled is not during_shutdown, "Active shutdown must still cancel the transport"
 
     asyncio.run(exercise())
 
