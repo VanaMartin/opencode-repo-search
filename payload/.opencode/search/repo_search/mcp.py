@@ -47,11 +47,20 @@ def create_server(
         loop = asyncio.get_running_loop()
         serving = asyncio.current_task()
         previous = signal.getsignal(signal.SIGTERM)
-        loop.add_signal_handler(signal.SIGTERM, serving.cancel)
+        tearing_down = False
+
+        def terminate():
+            # EOF may already have started cleanup. Native Task.cancel() would
+            # bypass its AnyIO shield and interrupt the lease-release RPC.
+            if not tearing_down:
+                serving.cancel()
+
+        loop.add_signal_handler(signal.SIGTERM, terminate)
         task = asyncio.create_task(renew())
         try:
             yield
         finally:
+            tearing_down = True
             # The transport's cancel scope is already cancelled during disconnect.
             # Shield teardown so graceful exits release leases before process exit.
             try:
