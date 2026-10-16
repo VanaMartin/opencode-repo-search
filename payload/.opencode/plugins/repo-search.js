@@ -13,13 +13,13 @@ export default {
         text: "For conceptual code/reference discovery use repo-knowledge-search. " +
           "Search hits name a committed upstream snapshot: resolve current anchors, " +
           "read local branch/staged/dirty/untracked deltas, and verify source before edits. " +
-          "At handoff report indexed commit, integrity and upstream currency separately.",
+          "At handoff report indexed commit, policy provenance, integrity and upstream currency separately.",
       })
     })
     await ctx.session.hook("compaction", (event) => {
       event.system.push({
         type: "text",
-        text: "Preserve the search corpus, indexed commit, integrity/currency observations " +
+        text: "Preserve the search corpus, indexed commit, policy provenance, integrity/currency observations " +
           "and unresolved local source deltas in the checkpoint when relevant.",
       })
     })

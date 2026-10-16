@@ -11,5 +11,6 @@ Load `repo-knowledge-search` and read `docs/agent-search.md`. Inspect enabled na
 in `.opencode/search/profiles.json`. Run
 `sh .opencode/search/search.sh sync --corpus NAME` for each enabled corpus, then
 inspect status. Report the published commit, changed/deleted rows and reused/new
-embeddings, including failed corpora. Source and policy come from the configured
-upstream branch; local edits require local discovery.
+embeddings, including failed corpora. Source comes from the configured upstream
+branch; shared policy comes from that snapshot and private policy is pinned
+locally. Report policy provenance. Local source edits require local discovery.

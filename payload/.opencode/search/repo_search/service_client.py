@@ -150,6 +150,7 @@ class SearchClient:
             "corpus": source.corpus,
             "branch": source.branch,
             "owner": source.owner,
+            "policy_sha256": source.policy_hash,
             "table": table,
             "interval": interval,
             "client_id": uuid.uuid4().hex,

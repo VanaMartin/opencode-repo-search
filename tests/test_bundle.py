@@ -6,6 +6,7 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 import asyncio
 import copy
+import hashlib
 import json
 import signal
 import subprocess
@@ -18,7 +19,7 @@ import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from repo_search import core
-from repo_search.git_source import PROFILE, MainSource, repository_id
+from repo_search.git_source import PROFILE, MainSource, policy_store, repository_id
 from repo_search.service import SearchService
 from repo_search.service_client import SearchClient, probe, rpc, socket_path
 from repo_search.settings import database_path, validate_profile
@@ -85,6 +86,8 @@ def repository(tmp_path):
     )
     author = tmp_path / "author"
     subprocess.run(["git", "clone", "-q", str(upstream), str(author)], check=True)
+    git(author, "config", "user.name", "Search Test")
+    git(author, "config", "user.email", "search@example.invalid")
     return author, upstream
 
 
@@ -612,3 +615,226 @@ def test_incompatible_mounts_are_rejected_and_expired_leases_allow_shutdown(repo
             await asyncio.gather(reaper, return_exceptions=True)
 
     asyncio.run(exercise())
+
+
+def test_private_install_preserves_tracked_settings_and_git_state(repository):
+    root, _ = repository
+    write(root, "AGENTS.md", "# Team rules\nKeep these shared.\n")
+    write(root, "opencode.jsonc", '{\n  // Team settings\n  "mcp": {}\n}\n')
+    write(root, "src/solver.py", "def solve(value):\n    return value * 2\n")
+    write(root, "notes.md", "Original notes\n")
+    original = commit(root)
+    git(root, "push", "-q", "origin", "main")
+    write(root, "notes.md", "Staged user notes\n")
+    git(root, "add", "notes.md")
+    write(root, "notes.md", "Unstaged user notes\n")
+    before_index = git(root, "diff", "--cached", "--binary")
+    before_status = git(root, "status", "--porcelain=v1")
+    agents = (root / "AGENTS.md").read_bytes()
+    config = (root / "opencode.jsonc").read_bytes()
+    assert install(root, "git-ignore", "--dry-run")["git"]["dry_run"]
+    assert not (root / ".opencode").exists()
+    result = install(root, "git-ignore")
+    assert result["git"]["visibility"] == "private"
+    assert (root / "AGENTS.md").read_bytes() == agents
+    assert (root / "opencode.jsonc").read_bytes() == config
+    assert git(root, "rev-parse", "HEAD") == original
+    assert git(root, "diff", "--cached", "--binary") == before_index
+    assert git(root, "status", "--porcelain=v1") == before_status
+    assert not (root / ".gitignore").exists()
+    runtime = root / result["runtime"]
+    settings = json.loads((runtime / "runtime.json").read_text())
+    assert settings["policy_source"] == "local"
+    details = json.loads(
+        subprocess.check_output([sys.executable, str(runtime / "run.py"), "init"], cwd=root)
+    )
+    assert details["choices"] == ["git-ignore", "git-commit"]
+    exclude = (root / ".git/info/exclude").read_bytes()
+    install(root, "git-ignore")
+    assert (root / ".git/info/exclude").read_bytes() == exclude
+    assert git(root, "diff", "--cached", "--binary") == before_index
+
+
+def test_explicit_commit_preserves_unrelated_staging_and_removes_only_owned_ignores(repository):
+    root, _ = repository
+    write(root, "src/solver.py", "def solve(value):\n    return value * 2\n")
+    write(root, "notes.md", "Original notes\n")
+    initial = commit(root)
+    git(root, "push", "-q", "origin", "main")
+    write(root, "notes.md", "Staged user notes\n")
+    git(root, "add", "notes.md")
+    write(root, "notes.md", "Unstaged user notes\n")
+    before = git(root, "diff", "--cached", "--binary")
+    exclude = root / ".git/info/exclude"
+    exclude.write_text(exclude.read_text() + "\n/user-scratch/\n")
+    install(root, "git-ignore")
+    runtime = root / ".opencode/search-local"
+    command = [sys.executable, str(runtime / "run.py"), "init", "git-commit"]
+    preview = json.loads(subprocess.check_output([*command, "--dry-run"], cwd=root))
+    assert preview["visibility"] == "shared"
+    assert git(root, "rev-parse", "HEAD") == initial
+    assert git(root, "diff", "--cached", "--binary") == before
+    subprocess.run(command, cwd=root, check=True, capture_output=True)
+    assert git(root, "diff", "--cached", "--binary") == before
+    assert (root / "notes.md").read_text() == "Unstaged user notes\n"
+    paths = git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").splitlines()
+    assert paths and all(
+        path.startswith((".opencode/search-local/", ".opencode/plugins/")) for path in paths
+    )
+    assert "/user-scratch/" in exclude.read_text()
+    assert "repo-search:" not in exclude.read_text()
+    assert json.loads((runtime / "runtime.json").read_text())["policy_source"] == "upstream"
+    assert json.loads((runtime / "install.json").read_text())["visibility"] == "shared"
+    assert git(root, "rev-parse", "origin/main") == initial
+    shared = MainSource.discover(root, profile=".opencode/search-local/profiles.json")
+    with pytest.raises(ValueError, match="absent"):
+        shared.fetch()
+    git(root, "push", "-q", "origin", "main")
+    published = shared.fetch()
+    assert published.provenance["source"] == "upstream"
+    assert not any(path.startswith(".opencode/search-local/") for path in published.selected())
+    before_head = git(root, "rev-parse", "HEAD")
+    subprocess.run(command, cwd=root, check=True, capture_output=True)
+    assert git(root, "rev-parse", "HEAD") == before_head
+    ignored = subprocess.run(
+        [sys.executable, str(runtime / "run.py"), "init", "git-ignore"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert ignored.returncode and "Tracked integration" in ignored.stderr
+
+
+def test_installation_requires_explicit_authorization_for_commit(repository):
+    root, _ = repository
+    write(root, "README.md", "# Project\n")
+    original = commit(root)
+    before_index = git(root, "write-tree")
+    install(root)
+    assert git(root, "rev-parse", "HEAD") == original
+    assert git(root, "write-tree") == before_index
+    pending = cli(root, "init")
+    assert pending["visibility"] == "undecided"
+    assert git(root, "rev-parse", "HEAD") == original
+    assert git(root, "write-tree") == before_index
+    result = install(root, "git-commit", "--configure-only", "--message", "share search policy")
+    assert result["git"]["commit"] != original
+    assert git(root, "log", "-1", "--format=%s") == "share search policy"
+    assert "repo_search/core.py" in git(root, "show", "--stat", "--oneline", "HEAD")
+
+
+def test_private_policy_is_pinned_and_source_remains_upstream(repository, tmp_path, monkeypatch):
+    root, _ = repository
+    write(
+        root,
+        "src/solver.py",
+        'def solve(value):\n    """Reuse symbolic ordering."""\n    return value * 2\n',
+    )
+    upstream = commit(root)
+    git(root, "push", "-q", "origin", "main")
+    install(root, "git-ignore")
+    profile_path = ".opencode/search-local/profiles.json"
+    profile = json.loads((root / profile_path).read_text())
+    source = MainSource.discover(root, profile=profile_path, policy_source="local")
+    assert source.policy_hash
+    assert (policy_store(root) / (source.policy_hash + ".json")).exists()
+    write(root, "src/solver.py", "def dirty(\n")
+    write(root, "src/untracked.py", "def unpublished():\n    pass\n")
+    write(root, profile_path, "invalid local edits after pinning")
+    snapshot = source.fetch()
+    assert snapshot.commit == upstream
+    assert snapshot.profile == profile
+    assert snapshot.provenance["source"] == "local"
+    assert snapshot.provenance["sha256"] == source.policy_hash
+    assert set(snapshot.selected()) == {"src/solver.py"}
+    db = tmp_path / "db"
+    result = core.ensure_main(source, db, source.table, force=True)
+    assert result["source_commit"] == upstream
+    for mode in ("fts", "vector", "hybrid"):
+        result = core.query(source, db, source.table, "symbolic ordering", mode, 5)
+        assert result["freshness"]["policy"]["sha256"] == source.policy_hash
+        assert result["results"] and all(
+            hit["path"] == "src/solver.py" for hit in result["results"]
+        )
+    monkeypatch.delenv("REPO_SEARCH_DB", raising=False)
+    shared = MainSource.discover(root, profile=profile_path)
+    assert shared.table != source.table
+    assert database_path(shared) != database_path(source)
+    profile["corpora"]["repository"]["include"] = ["src/solver.py"]
+    write(root, profile_path, json.dumps(profile))
+    changed = MainSource.discover(root, profile=profile_path, policy_source="local")
+    assert changed.table != source.table
+    assert database_path(changed) != database_path(source)
+    worktree = tmp_path / "worktree with spaces"
+    git(root, "worktree", "add", "--detach", str(worktree), "HEAD")
+    write(worktree, profile_path, json.dumps(profile))
+    sibling = MainSource.discover(worktree, profile=profile_path, policy_source="local")
+    assert sibling.owner == changed.owner
+    assert database_path(sibling) == database_path(changed)
+    assert policy_store(sibling.root) == policy_store(source.root)
+    manifest = core.read_manifest(db, source.table)
+    (policy_store(root) / (source.policy_hash + ".json")).write_text("corrupted snapshot")
+    with pytest.raises(ValueError, match="hash"):
+        core.ensure_main(source, db, source.table, force=True)
+    assert core.read_manifest(db, source.table) == manifest
+    assert (
+        core.query(source, db, source.table, "symbolic", "fts", 5)["freshness"]["integrity"]
+        == "complete"
+    )
+
+
+def test_private_cli_and_mcp_use_local_defaults_and_one_shared_daemon(repository, tmp_path):
+    root, _ = repository
+    write(root, "src/solver.py", 'def solve():\n    """Reuse symbolic ordering."""\n    return 1\n')
+    upstream = commit(root)
+    git(root, "push", "-q", "origin", "main")
+    db = tmp_path / "db"
+    install(root, "git-ignore", "--db", str(db))
+    runtime = root / ".opencode/search-local"
+    run = [sys.executable, str(runtime / "run.py")]
+    catalog = json.loads(subprocess.check_output([*run, "catalog"], cwd=root))
+    assert catalog["policy"]["source"] == "local"
+    assert catalog["source_commit"] == upstream
+    assert catalog["policy"]["sha256"]
+
+    async def exercise():
+        async with AsyncExitStack() as stack:
+            clients = []
+            for _ in range(2):
+                read, write_stream = await stack.enter_async_context(
+                    stdio_client(
+                        StdioServerParameters(command=run[0], args=[*run[1:], "mcp"], cwd=root)
+                    )
+                )
+                client = await stack.enter_async_context(ClientSession(read, write_stream))
+                await client.initialize()
+                clients.append(client)
+            for client in clients:
+                result = decoded(
+                    await client.call_tool(
+                        "query_table", {"query": "symbolic", "query_type": "hybrid"}
+                    )
+                )
+                assert result["freshness"]["source_commit"] == upstream
+                assert result["freshness"]["policy"] == catalog["policy"]
+            details = [decoded(await client.call_tool("table_details", {})) for client in clients]
+            assert len({item["service"]["pid"] for item in details}) == 1
+            assert all(item["service"]["loaded_models"] == 1 for item in details)
+        assert all(corpus["mounts"] == 0 for corpus in probe(db)["corpora"].values())
+
+    asyncio.run(exercise())
+    pinned = policy_store(root) / (catalog["policy"]["sha256"] + ".json")
+    assert hashlib.sha256(pinned.read_bytes()).hexdigest() == catalog["policy"]["sha256"]
+
+
+def test_shared_commit_does_not_capture_unrelated_edits_inside_team_guidance(repository):
+    root, _ = repository
+    write(root, "AGENTS.md", "# Shared guidance\n")
+    original = commit(root)
+    write(root, "AGENTS.md", "# Shared guidance\nUnrelated user edit.\n")
+    git(root, "add", "AGENTS.md")
+    before = git(root, "diff", "--cached", "--binary")
+    result = install(root, "git-commit", check=False)
+    assert result.returncode and "unrelated local edits" in result.stderr
+    assert git(root, "rev-parse", "HEAD") == original
+    assert git(root, "diff", "--cached", "--binary") == before

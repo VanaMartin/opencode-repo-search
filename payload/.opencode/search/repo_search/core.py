@@ -337,6 +337,7 @@ def describe(
         "repo_id": source.repo_id,
         "source_ref": f"{source.remote}/{source.branch}",
         "source_commit": manifest["source_commit"] if manifest else None,
+        "policy": manifest.get("policy") if manifest else None,
         "state": state,
         "integrity": integrity,
         "upstream": {
@@ -384,11 +385,15 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
     chunker = articles.CHUNKER if parser == "reference_note" else CHUNKER
     if healthy and previous["profile_sha256"] == policy_key and previous["chunker"] == chunker:
         if previous["blobs"] == selected:
-            if not plan and previous["source_commit"] != snapshot.commit:
+            if not plan and (
+                previous["source_commit"] != snapshot.commit
+                or previous.get("policy") != snapshot.provenance
+            ):
                 updated = {
                     **previous,
                     "source_commit": snapshot.commit,
                     "source_tree": snapshot.tree,
+                    "policy": snapshot.provenance,
                     "updated_at": time.time(),
                 }
                 write_json(db_path / f"{table}.manifest.json", updated)
@@ -396,6 +401,7 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
                 "mode": "plan" if plan else "sync",
                 "table": table,
                 "source_commit": snapshot.commit,
+                "policy": snapshot.provenance,
                 "files": len(selected),
                 "chunks": previous["chunks"],
                 "parsed_files": 0,
@@ -431,6 +437,7 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
     summary = {
         "table": table,
         "source_commit": snapshot.commit,
+        "policy": snapshot.provenance,
         "files": len(selected),
         "chunks": len(records),
         "max_tokens": max(r["tokens"] for r in records),
@@ -486,6 +493,7 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
         "table_version": candidate.version,
         "source_commit": snapshot.commit,
         "source_tree": snapshot.tree,
+        "policy": snapshot.provenance,
         "files": hashes,
         "blobs": selected,
         "snapshot_id": fingerprint([hashes, policy_key, chunker]),
@@ -639,9 +647,8 @@ def main() -> None:
         command.add_argument("--branch", default="main", help="Committed upstream source branch")
         command.add_argument("--db", type=Path, help="Override the repository-isolated database")
         command.add_argument("--table", help="Logical corpus name; defaults to upstream identity")
-        command.add_argument(
-            "--profile", default=PROFILE, help="Committed repository-relative policy"
-        )
+        command.add_argument("--profile", default=PROFILE, help="Repository-relative policy path")
+        command.add_argument("--policy-source", choices=["upstream", "local"], default="upstream")
         if name == "query":
             command.add_argument("text")
             command.add_argument("--mode", choices=["vector", "fts", "hybrid"], default="hybrid")
@@ -651,7 +658,12 @@ def main() -> None:
             )
     args = parser.parse_args()
     source = MainSource.discover(
-        args.root, args.remote, args.profile, corpus=args.corpus, branch=args.branch
+        args.root,
+        args.remote,
+        args.profile,
+        corpus=args.corpus,
+        branch=args.branch,
+        policy_source=args.policy_source,
     )
     db_path = database_path(source, args.db)
     table = args.table or source.table

@@ -20,14 +20,16 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 - General reference material: use its assigned `source` corpus, usually
   `references`. Keep that prose distinct from owned implementation and citations.
 
-Read `docs/agent-search.md` for setup, commands, parser formats and customization.
-The profile is committed indexing policy; `opencode.json(c)` is MCP configuration.
+Read `docs/agent-search.md`, or the installed private runtime's
+`guidance/agent-search.md`, for setup, commands, parser formats and customization.
+Shared policy is committed; private policy is pinned locally and identified by
+hash. The private plugin registers MCPs without editing tracked configuration.
 Server names are configurable: discover the actual tool catalog before calling.
 
 ## Retrieve and resolve
 
 1. Check `table_details` once per session/corpus. Record the indexed commit,
-   integrity, upstream currency and refresh error separately. `complete` does
+   policy provenance/hash, integrity, upstream currency and refresh error separately. `complete` does
    not mean up-to-date. A first query waits for initial indexing; with no complete
    snapshot, use local source and report unavailable retrieval.
 2. Form a specific conceptual query. Use `top_k=5` for code, `8` for references;
@@ -72,8 +74,10 @@ sh .opencode/search/search.sh sync --corpus articles
 sh .opencode/search/health.sh
 ```
 
-`sync` fetches the configured upstream branch and reads its committed profile
-and blobs. It never indexes the working tree. Read-only reviewers leave explicit
+`sync` fetches committed source from the configured upstream branch. Shared policy
+comes from that snapshot; private policy comes from a pinned local snapshot.
+Use the runtime path reported by setup or the context hook (`.opencode/search-local`
+for private installation). It never indexes working-tree source. Read-only reviewers leave explicit
 maintenance to the caller. Use the documented disconnect/stop/reconnect procedure
 after runtime-code or dependency changes. Never append replacements using a basic
 `ingest_docs` connector: reconciliation is owned by this indexer.

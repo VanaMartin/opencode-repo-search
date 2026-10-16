@@ -54,7 +54,9 @@ jobs:
       - name: Check the locked dependency set
         run: uv lock --project payload/.opencode/search --python 3.12 --check
       - name: Check JavaScript syntax
-        run: node --check payload/.opencode/plugins/repo-search.js
+        run: |
+          node --check payload/.opencode/plugins/repo-search.js
+          node --check payload/.opencode/search/private-plugin.js
       - name: Check source syntax and license headers
         run: |
           uv run --no-project --python 3.12 python - <<'PY'

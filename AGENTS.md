@@ -23,8 +23,10 @@ in `README.md`; the working installation path currently uses `install.py`.
 
 ## Contracts
 
-- Index the configured committed upstream branch. Read source and repository
-  indexing policy from the same fetched Git snapshot.
+- Index the configured committed upstream branch. Shared policy comes from that
+  same snapshot; private policy is an immutable local snapshot identified by hash.
+- Installation never stages or commits implicitly. Only an explicit `git-commit`
+  action may create a commit; `git-ignore` uses local Git excludes.
 - Discover branch, staged, dirty and untracked changes through local Git/source.
   Resolve retrieved paths and anchors against current source before edits.
 - Keep repository, article-note and general-reference corpora independent.

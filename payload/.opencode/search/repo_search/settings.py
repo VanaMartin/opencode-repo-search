@@ -59,6 +59,9 @@ def database_path(source, explicit: Path | None = None) -> Path:
     override = explicit or os.environ.get("REPO_SEARCH_DB")
     if override:
         return Path(override).expanduser().resolve()
-    identity = sha256(source.repo_id + "\n" + source.profile_path)[:20]
+    identity_key = source.repo_id + "\n" + source.profile_path
+    if source.policy_hash:
+        identity_key += "\nlocal:" + source.policy_hash
+    identity = sha256(identity_key)[:20]
     base = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share")))
     return (base / "repo-search" / identity / "lancedb").expanduser().resolve()

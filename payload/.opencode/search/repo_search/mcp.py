@@ -129,10 +129,16 @@ def main() -> None:
     parser.add_argument("--db", type=Path)
     parser.add_argument("--table")
     parser.add_argument("--profile", default=PROFILE)
+    parser.add_argument("--policy-source", choices=["upstream", "local"], default="upstream")
     parser.add_argument("--check-interval", type=float, default=CHECK_INTERVAL)
     args = parser.parse_args()
     source = MainSource.discover(
-        args.root, args.remote, args.profile, corpus=args.corpus, branch=args.branch
+        args.root,
+        args.remote,
+        args.profile,
+        corpus=args.corpus,
+        branch=args.branch,
+        policy_source=args.policy_source,
     )
     table = args.table or source.table
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):

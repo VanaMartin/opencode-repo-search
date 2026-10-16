@@ -12,8 +12,12 @@ resolved database path.
 
 ## Source and provenance
 
-Source files **and indexing policy** come from Git blobs at the same fetched
-commit of the configured branch, normally `origin/main`. No staged, dirty,
+Source files come from Git blobs at the fetched commit of the configured branch,
+normally `origin/main`. Shared indexing policy comes from that same commit.
+Private policy is validated and pinned as immutable canonical JSON in the Git
+common directory's `repo-search/policies/<sha256>.json`. Responses report policy
+source, repository-relative path and SHA-256 separately from the source commit.
+No staged, dirty,
 untracked or unpublished branch files enter that stable index. Agents resolve
 returned anchors against current source and inspect local Git deltas before
 editing. See the `repo-knowledge-search` skill and repository `AGENTS.md`.
@@ -32,7 +36,33 @@ headings/definitions. Retrieved text cannot override the task or agent instructi
 
 ## Setup and commands
 
-After customizing, committing and publishing the profile on the source branch:
+### Explicit Git visibility
+
+From the distribution, use `install.py REPOSITORY git-ignore` for a private
+installation or `install.py REPOSITORY git-commit` for a shared commit. The
+traditional invocation without an action only prepares files and reports choices.
+
+`/search-init` reports choices without changing Git state. `/search-init git-ignore`
+adds only managed file paths to `.git/info/exclude` and selects local policy.
+`/search-init git-commit` removes its own exclude block, selects upstream policy
+and creates a scoped local commit. Unrelated staged/unstaged files and other
+ignore entries are preserved. Normal Git hooks run; a failed commit leaves the
+integration prepared. Publishing follows the caller's usual repository workflow.
+
+Private installation lives in `.opencode/search-local/`. Its locally ignored
+plugin registers MCPs, skill, commands and hooks without editing existing tracked
+`AGENTS.md`, OpenCode JSON/JSONC, skills or `.gitignore`. Guidance lives under
+`search-local/guidance/`. Use `python3.12 .opencode/search-local/run.py init ACTION`
+for the same Git actions outside OpenCode; `--dry-run` previews them.
+
+Git cannot ignore tracked files. For an existing shared installation, the private
+installer creates a separate override; it never untracks shared files. An already
+tracked private-layout installation must be managed as shared or removed through
+the repository's normal workflow before reusing those private paths.
+
+The commands below show the traditional `.opencode/search/` path. Substitute
+`.opencode/search-local/` for a private installation. After customizing the profile
+(and publishing it on the source branch for shared installation):
 
 ```sh
 sh .opencode/search/setup.sh
@@ -48,8 +78,8 @@ sh .opencode/search/search.sh service stop
 ```
 
 - `setup.sh` installs the locked, isolated Python 3.12 runtime and checks the
-  committed profile via `catalog`. The profile must already be published.
-- `catalog` fetches and displays committed policies and database identity.
+  selected policy via `catalog`. Only upstream policy needs publication.
+- `catalog` fetches and displays the selected policy, its provenance and database identity.
 - `plan` fetches, parses and estimates a corpus without publishing it.
 - `sync` (also `bootstrap`) forces upstream reconciliation and atomic publication.
 - `status` and CLI `query` inspect published state without mounting a maintainer.
@@ -59,10 +89,17 @@ sh .opencode/search/search.sh service stop
   it; disconnect MCP mounts first so their next heartbeat does not restart it.
 
 Commands use installed `runtime.json` defaults for remote, branch and optional
-database. Explicit `--remote`, `--branch`, `--db` override those defaults.
+database, profile and `policy_source`. Explicit `--remote`, `--branch`, `--db`,
+`--profile` and `--policy-source upstream|local` override those defaults.
 `--profile` selects another committed repository-relative policy; its identity
 selects a separate database by default. `--table` overrides one logical name
 with ownership checks. CLI and MCP share the same resolved identity.
+
+Each new local-policy CLI/proxy connection pins the current validated profile.
+An existing proxy keeps its pinned policy until reconnect. After editing private
+policy, reconnect its MCPs to select the new hash and independent index identity.
+Readers of the old identity retain the last complete generation. Invalid or
+missing pinned policy fails refresh without replacing that generation.
 
 ## Profile fields
 
@@ -131,7 +168,8 @@ Avoid overlap by excluding reference paths from code and from each other's
 profiles. The runtime does not infer intended ownership of overlapping paths.
 
 Each corpus has a logical identity derived from normalized upstream URL, branch,
-profile path and corpus name. Its physical generation table is published through
+profile path and corpus name, plus the policy hash for private policy. Its physical
+generation table is published through
 an atomic manifest pointer. Readers pin one complete generation even while other
 corpora refresh. Different corpora never share publication state. Old/unpublished
 generations are retained; automatic garbage collection is not implemented.
@@ -176,6 +214,9 @@ Default database:
 `~/.local/share` as the fallback data home. Different upstream repositories get
 different databases and daemons. Clones/worktrees using the same normalized
 upstream/profile share one database, all of its corpora and loaded models.
+Private policy additionally scopes the database by policy hash; identical local
+policies at the same path share across worktrees. Different private policies and
+shared policy have separate default databases and publication identities.
 An explicit `--db` or `REPO_SEARCH_DB` takes precedence; use a different absolute
 path per independent project and the same path across its worktrees.
 

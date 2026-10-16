@@ -7,10 +7,12 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import json
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -19,6 +21,26 @@ from repo_search.chunks import sha256
 from repo_search.settings import validate_profile
 
 PROFILE = ".opencode/search/profiles.json"
+
+
+def policy_store(root: Path) -> Path:
+    common = Path(git(root, "rev-parse", "--git-common-dir").decode().strip())
+    return (root / common).resolve() / "repo-search/policies"
+
+
+def pin_policy(root: Path, path: str) -> str:
+    profile = json.loads((root / path).read_bytes())
+    validate_profile(profile)
+    raw = (json.dumps(profile, sort_keys=True, ensure_ascii=False) + "\n").encode()
+    digest = hashlib.sha256(raw).hexdigest()
+    store = policy_store(root)
+    store.mkdir(parents=True, exist_ok=True)
+    destination = store / (digest + ".json")
+    with tempfile.NamedTemporaryFile(dir=store, delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write(raw)
+    temporary.replace(destination)
+    return digest
 
 
 def git(root: Path, *args: str) -> bytes:
@@ -82,6 +104,7 @@ class MainSource:
     repo_id: str
     corpus: str = "repository"
     branch: str = "main"
+    policy_hash: str | None = None
 
     @classmethod
     def discover(
@@ -92,29 +115,43 @@ class MainSource:
         *,
         corpus: str = "repository",
         branch: str = "main",
+        policy_source: str = "upstream",
+        policy_hash: str | None = None,
     ) -> MainSource:
         root = Path(git(root, "rev-parse", "--show-toplevel").decode().strip()).resolve()
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", remote):
             raise ValueError("Remote must be a configured Git remote name")
         path = Path(profile)
         if path.is_absolute() or ".." in path.parts:
-            raise ValueError("Profile must be a repository-relative committed path")
+            raise ValueError("Profile must be a repository-relative path")
+        if policy_source not in {"upstream", "local"}:
+            raise ValueError("Policy source must be upstream or local")
+        if policy_hash is not None:
+            if not re.fullmatch(r"[a-f0-9]{64}", policy_hash):
+                raise ValueError("Invalid local policy hash")
+        elif policy_source == "local":
+            policy_hash = pin_policy(root, path.as_posix())
         if not re.fullmatch(r"[a-z][a-z0-9_]*", corpus):
             raise ValueError("Corpus must be a lowercase identifier")
         subprocess.run(
             ["git", "check-ref-format", "refs/heads/" + branch], check=True, capture_output=True
         )
         url = git(root, "remote", "get-url", remote).decode().strip()
-        return cls(root, remote, path.as_posix(), repository_id(url, root), corpus, branch)
+        return cls(
+            root, remote, path.as_posix(), repository_id(url, root), corpus, branch, policy_hash
+        )
 
     @property
     def owner(self) -> dict:
-        return {
+        owner = {
             "repo_id": self.repo_id,
             "branch": self.branch,
             "profile_path": self.profile_path,
             "corpus": self.corpus,
         }
+        if self.policy_hash:
+            owner["policy_sha256"] = self.policy_hash
+        return owner
 
     @property
     def table(self) -> str:
@@ -164,16 +201,27 @@ class MainSource:
             mode, kind, oid = metadata.split()
             if kind == b"blob" and mode in {b"100644", b"100755"}:
                 blobs[path.decode("utf-8")] = oid.decode()
-        if self.profile_path not in blobs:
-            raise ValueError(
-                "Indexing profile is absent from the fetched branch; commit and publish it"
-            )
-        policy = read_blobs(self.root, [blobs[self.profile_path]])[blobs[self.profile_path]]
+        if self.policy_hash:
+            policy = (policy_store(self.root) / (self.policy_hash + ".json")).read_bytes()
+            if hashlib.sha256(policy).hexdigest() != self.policy_hash:
+                raise ValueError("Local policy snapshot does not match its hash")
+        else:
+            if self.profile_path not in blobs:
+                raise ValueError(
+                    "Indexing profile is absent from the fetched branch; "
+                    "publish it or use a local policy"
+                )
+            policy = read_blobs(self.root, [blobs[self.profile_path]])[blobs[self.profile_path]]
         profile = json.loads(policy)
         validate_profile(profile)
         if self.corpus not in profile["corpora"]:
             raise ValueError(f"Corpus {self.corpus} is absent from the committed profile")
-        return Snapshot(self, commit, tree, blobs, profile)
+        provenance = {
+            "source": "local" if self.policy_hash else "upstream",
+            "path": self.profile_path,
+            "sha256": hashlib.sha256(policy).hexdigest(),
+        }
+        return Snapshot(self, commit, tree, blobs, profile, provenance)
 
 
 @dataclass(frozen=True)
@@ -183,6 +231,7 @@ class Snapshot:
     tree: str
     blobs: dict[str, str]
     profile: dict
+    provenance: dict
 
     @property
     def policy(self) -> dict:
