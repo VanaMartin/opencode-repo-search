@@ -157,6 +157,19 @@ isolated databases and checks installation, provenance, retrieval modes,
 multi-corpus/worktree sharing, automatic refresh and failure preservation.
 Fixture repositories and databases are created in temporary test directories.
 
+### GitHub Actions
+
+The [CI workflow](.github/workflows/ci.yml) runs on pull requests, pushes to `main`,
+version tags (`v*`) and manual dispatch. It checks Ruff lint/format, Python,
+JavaScript, shell and configuration syntax, license headers and lockfile currency.
+The integration suite runs on Ubuntu 24.04 (x86-64) and macOS 15 (Apple Silicon),
+using fresh Python 3.12 environments and source archives extracted outside the
+checkout into a path containing spaces.
+
+Dependency and model downloads are cached; select `cold_cache` when manually
+running CI to exercise uncached setup. Each platform uploads JUnit test results.
+Once all checks pass, CI uploads the tested source bundle as a workflow artifact.
+
 ## Later tarball
 
 Keep the bundle outside the target's working tree while installing it. Its files

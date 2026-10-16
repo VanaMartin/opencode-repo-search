@@ -1,0 +1,205 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      cold_cache:
+        description: Download dependencies and the model without restoring caches
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.11.26"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  quality:
+    name: Lint, syntax and lockfile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Check Python lint and formatting
+        run: |
+          uv tool run --from ruff==0.15.21 ruff check .
+          uv tool run --from ruff==0.15.21 ruff format --check .
+      - name: Check the locked dependency set
+        run: uv lock --project payload/.opencode/search --python 3.12 --check
+      - name: Check JavaScript syntax
+        run: node --check payload/.opencode/plugins/repo-search.js
+      - name: Check source syntax and license headers
+        run: |
+          uv run --no-project --python 3.12 python - <<'PY'
+          import ast
+          import json
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          names = subprocess.check_output(["git", "ls-files", "-z"], text=True).split("\0")
+          license_url = "https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE"
+          for name in filter(None, names):
+              path = Path(name)
+              source = path.read_text(encoding="utf-8")
+              if path.suffix == ".py":
+                  ast.parse(source, filename=name)
+              elif path.suffix == ".json":
+                  json.loads(source)
+              elif path.suffix == ".toml" or path.name == "uv.lock":
+                  tomllib.loads(source)
+              elif path.suffix == ".sh":
+                  subprocess.run(["sh", "-n", name], check=True)
+              if path.suffix != ".json" and path.name != "LICENSE":
+                  header = "\n".join(source.splitlines()[:15])
+                  assert "SPDX-License-Identifier: BSD-3-Clause" in header, name
+                  assert "License: " + license_url in header, name
+          PY
+      - name: Check whitespace
+        run: |
+          empty_tree=$(git hash-object -w -t tree /dev/null)
+          git diff --check "$empty_tree" HEAD
+
+  integration:
+    name: Integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    env:
+      TOKENIZERS_PARALLELISM: "false"
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure isolated test paths
+        run: |
+          cat >> "$GITHUB_ENV" <<EOF
+          UV_PROJECT_ENVIRONMENT=$RUNNER_TEMP/repo-search-runtime
+          HF_HOME=$RUNNER_TEMP/huggingface
+          XDG_DATA_HOME=$RUNNER_TEMP/repo-search-data
+          SOURCE_ARCHIVE=$RUNNER_TEMP/opencode-repo-search.tgz
+          BUNDLE_PARENT=$RUNNER_TEMP/distribution with spaces
+          EOF
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: ${{ !inputs.cold_cache }}
+          cache-dependency-glob: |
+            payload/.opencode/search/pyproject.toml
+            payload/.opencode/search/uv.lock
+      - name: Restore the embedding model cache
+        if: ${{ !inputs.cold_cache }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.HF_HOME }}/hub
+          key: minilm-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('payload/.opencode/search/profiles.json') }}
+      - name: Build and inspect the source archive
+        run: |
+          git archive --format=tar.gz --prefix=opencode-repo-search/ \
+            --output="$SOURCE_ARCHIVE" HEAD
+          uv run --no-project --python 3.12 python - <<'PY'
+          import os
+          import tarfile
+          from pathlib import Path, PurePosixPath
+
+          required = {
+              "LICENSE", "README.md", "AGENTS.md", "install.py", "verify.sh",
+              "tests/test_bundle.py", "examples/add-corpus.json", "examples/reference-note.md",
+              "payload/.claude/skills/repo-knowledge-search/SKILL.md",
+              "payload/.opencode/commands/search-status.md",
+              "payload/.opencode/commands/search-sync.md",
+              "payload/.opencode/plugins/repo-search.js",
+              "payload/.opencode/search/.gitignore", "payload/.opencode/search/profiles.json",
+              "payload/.opencode/search/pyproject.toml", "payload/.opencode/search/uv.lock",
+              "payload/.opencode/search/run.py", "payload/.opencode/search/setup.sh",
+              "payload/.opencode/search/search.sh", "payload/.opencode/search/health.sh",
+              "payload/.opencode/search/repo_search/core.py", "payload/docs/agent-search.md",
+          }
+          forbidden = {
+              ".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache",
+              ".DS_Store", "node_modules", "dist", "build",
+          }
+          with tarfile.open(os.environ["SOURCE_ARCHIVE"], "r:gz") as archive:
+              files = set()
+              for member in archive.getmembers():
+                  path = PurePosixPath(member.name)
+                  assert not path.is_absolute() and ".." not in path.parts, member.name
+                  assert path.parts[0] == "opencode-repo-search", member.name
+                  assert member.isfile() or member.isdir(), member.name
+                  assert not forbidden.intersection(path.parts), member.name
+                  assert not any(part.startswith("._") for part in path.parts), member.name
+                  assert not path.name.endswith((".pyc", ".sock", ".lance", "~")), member.name
+                  if member.isfile():
+                      files.add(path.relative_to("opencode-repo-search").as_posix())
+              assert not required - files, f"Missing bundle files: {required - files}"
+              destination = Path(os.environ["BUNDLE_PARENT"])
+              destination.mkdir(parents=True)
+              archive.extractall(destination, filter="data")
+          print(f"Validated and extracted {len(files)} source files")
+          PY
+      - name: Run the locked suite from the extracted distribution
+        working-directory: ${{ env.BUNDLE_PARENT }}/opencode-repo-search
+        run: |
+          sh verify.sh -v --basetemp "$RUNNER_TEMP/repo-search-tests" \
+            --junitxml "$RUNNER_TEMP/test-results/integration.xml"
+      - name: Upload test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-${{ matrix.os }}
+          path: ${{ runner.temp }}/test-results/*.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  bundle:
+    name: Verified source bundle
+    needs: [quality, integration]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the tested source bundle
+        run: |
+          git archive --format=tar.gz --prefix=opencode-repo-search/ \
+            --output="$RUNNER_TEMP/opencode-repo-search.tgz" HEAD
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: opencode-repo-search-${{ github.sha }}
+          path: ${{ runner.temp }}/opencode-repo-search.tgz
+          if-no-files-found: error
+          retention-days: 14
