@@ -12,6 +12,11 @@ from repo_search import core
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        from repo_search.installation import main as initialize
+
+        initialize(Path(__file__).parent, sys.argv[2:])
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "validate-profile":
         from repo_search.settings import validate_profile
 
@@ -20,11 +25,11 @@ def main():
     config = Path(__file__).parent / "runtime.json"
     if config.exists():
         settings = json.loads(config.read_text())
-        for name in ("remote", "branch", "db"):
-            flag = "--" + name
+        for name in ("remote", "branch", "db", "profile", "policy_source"):
+            flag = "--" + name.replace("_", "-")
             explicit = any(arg == flag or arg.startswith(flag + "=") for arg in sys.argv[2:])
             if settings.get(name) and not explicit:
-                sys.argv.extend(["--" + name, settings[name]])
+                sys.argv.extend([flag, settings[name]])
     if len(sys.argv) > 1 and sys.argv[1] in {"mcp", "service"}:
         command = sys.argv.pop(1)
         if command == "mcp":

@@ -16,7 +16,7 @@ integration tests. The current installation method is `install.py`.
 
 The next packaging stage is a native OpenCode V2 package plugin: register MCP
 servers, bundled guidance and commands directly; bootstrap a versioned cached
-runtime; and provide `/search-init` for repository policy setup. GitHub/npm
+runtime; and extend `/search-init` with repository policy discovery. GitHub/npm
 installation through `opencode plugin add` becomes available once that package
 entrypoint is implemented and tested.
 
@@ -42,7 +42,7 @@ opencode-repo-search/
 │   └── add-corpus.json         # Fourth/custom corpus example
 └── payload/                   # Files copied into the target worktree
     ├── .claude/skills/repo-knowledge-search/SKILL.md
-    ├── .opencode/commands/search-{status,sync}.md
+    ├── .opencode/commands/search-{init,status,sync}.md
     ├── .opencode/plugins/repo-search.js
     ├── .opencode/search/
     │   ├── profiles.json      # Committed corpus-selection/chunking policy
@@ -64,6 +64,10 @@ Existing unrelated configuration and agent guidance are preserved. Differing
 payload files and conflicting unmanaged server names stop installation before
 files are written. `--fragment-only` supports hand-merging JSONC configurations.
 
+Private installation uses a separate `.opencode/search-local/` runtime and a
+locally ignored plugin. That plugin registers MCPs, guidance and commands through
+OpenCode V2 without editing tracked project configuration or `AGENTS.md`.
+
 ## Install into a repository
 
 Prerequisites: Git, `uv`, Python 3.12 (which `uv` can provision), upstream access,
@@ -73,20 +77,46 @@ Run from this repository root:
 
 ```sh
 TARGET_REPO="/path/to/your-repository"
-python3.12 install.py "$TARGET_REPO" --dry-run
-python3.12 install.py "$TARGET_REPO"
+python3.12 install.py "$TARGET_REPO" git-ignore --dry-run
+python3.12 install.py "$TARGET_REPO" git-ignore
 ```
+
+Choose Git visibility explicitly:
+
+| Action | Behavior |
+|---|---|
+| `git-ignore` | Private installation, local `.git/info/exclude` entries, pinned local policy; existing tracked settings stay untouched |
+| `git-commit` | Shared installation and a focused local commit of integration files; preserves unrelated staged changes |
+| No action | Prepare the traditional installation and report the choices; no staging or commit |
+
+The installer never pushes. `git-commit` runs normal Git hooks and accepts
+`--message "configure search"`. Both actions accept `--dry-run`.
+
+Inside OpenCode, `/search-init` reports the choices. Invoke `/search-init git-ignore`
+or `/search-init git-commit` to apply one. The equivalent installed command is:
+
+```sh
+# Use search-local for a private installation, search for the traditional layout.
+python3.12 .opencode/search-local/run.py init
+python3.12 .opencode/search-local/run.py init git-commit --dry-run
+```
+
+A private installation can become shared through `git-commit`; its runtime and
+policy then require publication to the configured source branch. Git cannot
+ignore tracked files: keep an existing shared installation and install a private
+override with `install.py "$TARGET_REPO" git-ignore` when shared settings cannot
+be edited.
 
 From another directory, use the absolute installer path:
 
 ```sh
-python3.12 /path/to/opencode-repo-search/install.py "$TARGET_REPO" --dry-run
-python3.12 /path/to/opencode-repo-search/install.py "$TARGET_REPO"
+python3.12 /path/to/opencode-repo-search/install.py "$TARGET_REPO" git-ignore --dry-run
+python3.12 /path/to/opencode-repo-search/install.py "$TARGET_REPO" git-ignore
 ```
 
 `repository` is enabled by default. Inspect the installed
-`.opencode/search/profiles.json` and match include/exclude patterns to the target
-repository's code, tests, documentation and reference directories. General `kb/`
+`profiles.json` in the reported runtime directory and match include/exclude
+patterns to the target repository's code, tests, documentation and reference directories. General `kb/`
 Markdown usually belongs in `references`; it only belongs in `articles` if it
 uses the Source/Pagination literature-note format. Enable corpora only once their
 paths contain suitable committed text.
@@ -94,7 +124,7 @@ paths contain suitable committed text.
 For three corpus surfaces on initial installation:
 
 ```sh
-python3.12 install.py "$TARGET_REPO" --corpora repository,articles,references
+python3.12 install.py "$TARGET_REPO" git-ignore --corpora repository,articles,references
 ```
 
 For an already installed, customized profile:
@@ -103,8 +133,10 @@ For an already installed, customized profile:
 python3.12 install.py "$TARGET_REPO" --configure-only --corpora repository,references
 ```
 
-Commit and publish the installed files and customized profile to the intended
-upstream source branch using the repository's ordinary review process. The
+For shared installation, explicitly run `git-commit` and publish the installed
+files and customized profile to the intended upstream source branch using the
+repository's ordinary review process. Private policy is pinned locally and
+requires no repository commit. Source always comes from the fetched upstream. The
 installer detects the local remote-HEAD branch, falling back to `main`; use
 `--remote upstream --branch master` when appropriate. A profile on an unmerged
 feature branch is absent from an upstream-main index, even if it exists locally.
@@ -112,12 +144,15 @@ feature branch is absent from an upstream-main index, even if it exists locally.
 Then, from the target repository root:
 
 ```sh
-sh .opencode/search/setup.sh
-sh .opencode/search/search.sh plan
-sh .opencode/search/search.sh sync
-sh .opencode/search/search.sh query "transaction persistence architecture" --mode hybrid
-sh .opencode/search/health.sh
+sh .opencode/search-local/setup.sh
+sh .opencode/search-local/search.sh plan
+sh .opencode/search-local/search.sh sync
+sh .opencode/search-local/search.sh query "transaction persistence architecture" --mode hybrid
+sh .opencode/search-local/health.sh
 ```
+
+Use `.opencode/search/` for the traditional shared layout. Private runtime guidance
+is under `.opencode/search-local/guidance/`.
 
 Repeat `sync --corpus NAME` for the other enabled corpora, or open OpenCode: each
 connected MCP populates and refreshes its own corpus automatically. Check
@@ -137,7 +172,7 @@ reference-note requirements, other MCP clients, provenance and troubleshooting.
   `server`, then rerun `--configure-only --corpora name1,name2,...`. Each entry
   gets its own logical corpus and independently published LanceDB generations.
 - **Isolation:** defaults are derived from normalized upstream identity and the
-  committed profile path. Use an explicit absolute `--db` if desired; assign a
+  profile path, plus the policy hash for private installations. Use an explicit absolute `--db` if desired; assign a
   different path to every independent project. Worktrees share the same path.
 - **Model:** keep the pinned CPU MiniLM baseline for initial testing. Changing
   embedding model/spec requires new logical tables and reembedding.

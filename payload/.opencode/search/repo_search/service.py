@@ -88,6 +88,7 @@ class SearchService:
             mount["profile"],
             corpus=mount["corpus"],
             branch=mount["branch"],
+            policy_hash=mount.get("policy_sha256"),
         )
         if source.owner != mount["owner"]:
             raise ValueError("Configured upstream changed since mount")
@@ -177,6 +178,7 @@ class SearchService:
                     "source_ref": f"{source.remote}/{source.branch}",
                     "db_uri": str(self.db_path),
                     "corpora": snapshot.profile["corpora"],
+                    "policy": snapshot.provenance,
                 }
             if command == "status":
                 return await asyncio.to_thread(indexer.status, source, self.db_path, table)
@@ -309,13 +311,20 @@ def main() -> None:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--profile", default=PROFILE)
+    parser.add_argument("--policy-source", choices=["upstream", "local"], default="upstream")
     parser.add_argument("--branch", default="main")
     parser.add_argument("--idle-timeout", type=float, default=IDLE_TIMEOUT)
     args = parser.parse_args()
     if args.db:
         db_path = args.db.expanduser().resolve()
     else:
-        source = MainSource.discover(args.root, args.remote, args.profile, branch=args.branch)
+        source = MainSource.discover(
+            args.root,
+            args.remote,
+            args.profile,
+            branch=args.branch,
+            policy_source=args.policy_source,
+        )
         db_path = database_path(source)
     if args.command != "serve":
         try:

@@ -24,7 +24,8 @@
       "exclude": [
         ".git/**", ".venv/**", "**/.venv/**", "**/__pycache__/**",
         "**/target/**", "**/node_modules/**", "**/dist/**", "**/build/**",
-        ".opencode/search/**", ".claude/worktrees/**", ".worktrees/**",
+        ".opencode/search/**", ".opencode/search-local/**",
+        ".claude/worktrees/**", ".worktrees/**",
         "docs/_build/**", "docs/literature/**",
         "docs/references/**", "reference/**", "literature/**", "kb/**",
         "tests/fixtures/**", "uv.lock", "Cargo.lock", "package-lock.json"

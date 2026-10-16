@@ -17,7 +17,7 @@ from pathlib import Path
 BUNDLE = Path(__file__).resolve().parent
 PAYLOAD = BUNDLE / "payload"
 RUNTIME = Path(".opencode/search")
-STATE = RUNTIME / "install.json"
+PRIVATE_RUNTIME = Path(".opencode/search-local")
 START = "<!-- repo-search:start -->"
 END = "<!-- repo-search:end -->"
 
@@ -39,9 +39,11 @@ def install(args) -> dict:
     root = Path(git(requested, "rev-parse", "--show-toplevel"))
     if root != requested:
         raise ValueError("Choose the Git worktree root as the installation directory")
-    state_path = root / STATE
+    private = args.git_action == "git-ignore" or (root / PRIVATE_RUNTIME / "install.json").exists()
+    runtime = PRIVATE_RUNTIME if private else RUNTIME
+    state_path = root / runtime / "install.json"
     previous = json.loads(state_path.read_text()) if state_path.exists() else {}
-    runtime_path = root / RUNTIME / "runtime.json"
+    runtime_path = root / runtime / "runtime.json"
     saved = (
         json.loads(runtime_path.read_text())
         if args.configure_only and runtime_path.exists()
@@ -59,7 +61,7 @@ def install(args) -> dict:
     subprocess.run(
         ["git", "check-ref-format", "refs/heads/" + branch], check=True, capture_output=True
     )
-    profile_path = root / RUNTIME / "profiles.json"
+    profile_path = root / runtime / "profiles.json"
     if args.configure_only:
         if not profile_path.is_file():
             raise ValueError("--configure-only needs an existing installation")
@@ -83,6 +85,14 @@ def install(args) -> dict:
         capture_output=True,
     )
     settings = {"remote": remote, "branch": branch}
+    if private:
+        settings.update(
+            profile=str(runtime / "profiles.json"),
+            policy_source=saved.get("policy_source", "local"),
+        )
+    elif saved.get("policy_source"):
+        settings["policy_source"] = saved["policy_source"]
+        settings["profile"] = saved.get("profile", str(runtime / "profiles.json"))
     if args.db:
         settings["db"] = str(args.db.expanduser().resolve())
     elif saved.get("db"):
@@ -94,12 +104,12 @@ def install(args) -> dict:
             "uv",
             "run",
             "--project",
-            ".opencode/search",
+            str(runtime),
             "--python",
             "3.12",
             "--frozen",
             "python",
-            ".opencode/search/run.py",
+            str(runtime / "run.py"),
             "mcp",
             "--corpus",
             name,
@@ -125,7 +135,7 @@ def install(args) -> dict:
     ]
     config_path = next((path for path in candidates if path.exists()), root / "opencode.json")
     config = None
-    if not args.fragment_only:
+    if not args.fragment_only and not private:
         try:
             config = (
                 json.loads(config_path.read_text())
@@ -164,32 +174,49 @@ def install(args) -> dict:
             ):
                 continue
             relative = source.relative_to(PAYLOAD)
-            if relative != RUNTIME / "profiles.json":
+            if private:
+                if not relative.is_relative_to(RUNTIME):
+                    continue
+                relative = runtime / relative.relative_to(RUNTIME)
+            if relative != runtime / "profiles.json":
                 files[relative] = source.read_bytes()
-        files[RUNTIME / "profiles.json"] = encoded(profile)
+        files[runtime / "profiles.json"] = encoded(profile)
+        if private:
+            for name, source in {
+                "SKILL.md": PAYLOAD / ".claude/skills/repo-knowledge-search/SKILL.md",
+                "agent-search.md": PAYLOAD / "docs/agent-search.md",
+            }.items():
+                files[runtime / "guidance" / name] = source.read_bytes()
+            files[Path(".opencode/plugins/repo-search-private.js")] = (
+                b"/**\n * SPDX-License-Identifier: BSD-3-Clause\n"
+                b" * License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE\n"
+                b" */\n"
+                b'export { default } from "../search-local/private-plugin.js"\n'
+            )
     else:
-        files[RUNTIME / "profiles.json"] = encoded(profile)
-    files[RUNTIME / "runtime.json"] = encoded(settings)
-    files[RUNTIME / "mcp.fragment.json"] = encoded(fragment)
-    files[RUNTIME / "LICENSE"] = (BUNDLE / "LICENSE").read_bytes()
+        files[runtime / "profiles.json"] = encoded(profile)
+    files[runtime / "runtime.json"] = encoded(settings)
+    files[runtime / "mcp.fragment.json"] = encoded(fragment)
+    files[runtime / "LICENSE"] = (BUNDLE / "LICENSE").read_bytes()
     if config is not None:
         files[config_path.relative_to(root)] = encoded(config)
-    guidance = (PAYLOAD / RUNTIME / "AGENTS.snippet.md").read_text().strip()
-    agents_path = root / "AGENTS.md"
-    current = agents_path.read_text() if agents_path.exists() else ""
-    block = f"{START}\n{guidance}\n{END}"
-    if START in current:
-        pattern = re.compile(re.escape(START) + r".*?" + re.escape(END), re.DOTALL)
-        if not pattern.search(current):
-            raise ValueError("AGENTS.md has an incomplete repo-search block")
-        updated = pattern.sub(lambda _: block, current)
-    else:
-        updated = current.rstrip() + ("\n\n" if current.strip() else "") + block + "\n"
-    files[Path("AGENTS.md")] = updated.encode()
+    if not private:
+        guidance = (PAYLOAD / RUNTIME / "AGENTS.snippet.md").read_text().strip()
+        agents_path = root / "AGENTS.md"
+        current = agents_path.read_text() if agents_path.exists() else ""
+        block = f"{START}\n{guidance}\n{END}"
+        if START in current:
+            pattern = re.compile(re.escape(START) + r".*?" + re.escape(END), re.DOTALL)
+            if not pattern.search(current):
+                raise ValueError("AGENTS.md has an incomplete repo-search block")
+            updated = pattern.sub(lambda _: block, current)
+        else:
+            updated = current.rstrip() + ("\n\n" if current.strip() else "") + block + "\n"
+        files[Path("AGENTS.md")] = updated.encode()
     generated = {
-        RUNTIME / "profiles.json",
-        RUNTIME / "runtime.json",
-        RUNTIME / "mcp.fragment.json",
+        runtime / "profiles.json",
+        runtime / "runtime.json",
+        runtime / "mcp.fragment.json",
         Path("AGENTS.md"),
         config_path.relative_to(root),
     }
@@ -199,19 +226,50 @@ def install(args) -> dict:
             raise ValueError(f"Installation path resolves outside the worktree: {relative}")
         if destination.exists() and destination.read_bytes() != raw:
             if relative in generated:
-                if relative == RUNTIME / "profiles.json" and not args.configure_only:
+                if relative == runtime / "profiles.json" and not args.configure_only:
                     raise ValueError("Existing customized profile: use --configure-only to keep it")
                 continue
             raise ValueError(f"Existing file differs: {relative}; inspect it before upgrading")
+    mixed = [Path("AGENTS.md"), config_path.relative_to(root)] if not private else []
+    conflicts = []
+    has_head = (
+        subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", "HEAD"], capture_output=True
+        ).returncode
+        == 0
+    )
+    for path in mixed:
+        destination = root / path
+        expected = previous.get("files", {}).get(str(path))
+        if has_head and destination.exists() and digest(destination.read_bytes()) != expected:
+            changed = git(root, "diff", "HEAD", "--name-only", "--", ":(literal)" + str(path))
+            if changed:
+                conflicts.append(str(path))
     state = {
         "format": "repo-search-install-v1",
+        "layout": "private" if private else "legacy",
+        "visibility": previous.get("visibility", "undecided"),
+        "git_conflicts": sorted(set(previous.get("git_conflicts", [])) | set(conflicts)),
         "servers": list(servers),
         "server_config": servers,
-        "config": str(config_path.relative_to(root)) if config is not None else "manual-fragment",
-        "files": {str(path): digest(raw) for path, raw in files.items()},
+        "config": "plugin"
+        if private
+        else str(config_path.relative_to(root))
+        if config is not None
+        else "manual-fragment",
+        "files": {
+            **previous.get("files", {}),
+            **{str(path): digest(raw) for path, raw in files.items()},
+        },
     }
     if not state_path.resolve().is_relative_to(root):
         raise ValueError("Installation state resolves outside the worktree")
+    if private and args.git_action == "git-ignore":
+        tracked = git(root, "ls-files", "--", *[":(literal)" + str(path) for path in files])
+        if tracked:
+            raise ValueError(
+                "Private installation paths are already tracked; inspect them before installing"
+            )
     if not args.dry_run:
         for relative, raw in files.items():
             destination = root / relative
@@ -220,7 +278,7 @@ def install(args) -> dict:
             temporary.write_bytes(raw)
             temporary.replace(destination)
         state_path.write_bytes(encoded(state))
-    return {
+    result = {
         "mode": "dry-run" if args.dry_run else "installed",
         "root": str(root),
         "branch": branch,
@@ -228,13 +286,35 @@ def install(args) -> dict:
         "servers": list(servers),
         "config": state["config"],
         "files": len(files),
-        "next": "Customize profiles, commit and publish to the source branch, then run setup.sh",
+        "runtime": str(runtime),
+        "choices": ["git-ignore", "git-commit"],
+        "next": "Choose git-ignore for private settings or git-commit for shared settings",
     }
+    if args.git_action:
+        if args.dry_run:
+            result["git"] = {"action": args.git_action, "dry_run": True}
+        else:
+            initialized = subprocess.check_output(
+                [
+                    sys.executable,
+                    str(root / runtime / "run.py"),
+                    "init",
+                    args.git_action,
+                    *(["--message", args.message] if args.message else []),
+                ],
+                cwd=root,
+                text=True,
+            )
+            result["git"] = json.loads(initialized)
+            result["next"] = result["git"]["next"]
+    return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("repository", type=Path)
+    parser.add_argument("git_action", nargs="?", choices=["git-ignore", "git-commit"])
+    parser.add_argument("--message", help="Commit message for the explicit git-commit action")
     parser.add_argument(
         "--corpora", help="Comma-separated corpus names; defaults to enabled profiles"
     )
