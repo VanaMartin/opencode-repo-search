@@ -22,6 +22,10 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 Read `docs/agent-search.md`, or the installed private runtime's
 `guidance/agent-search.md`, for setup, commands, parser formats and customization.
+For the native package, use the bundled guide/launcher paths supplied by its
+context hook and `/search-*` commands; settings are in `.opencode/search-package/`
+and its Python runtime is in the user cache. Substitute that launcher plus
+`--root /path/to/worktree` for the portable `search.sh` examples below.
 Shared policy is committed; private policy is pinned locally and identified by
 hash. The private plugin registers MCPs without editing tracked configuration.
 Server names are configurable: discover the actual tool catalog before calling.

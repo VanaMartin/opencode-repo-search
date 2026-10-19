@@ -10,15 +10,16 @@ literature-note and general-reference corpora backed by LanceDB.
 
 ## Project status
 
-This repository contains the standalone search engine, locked Python runtime,
-repository installer, OpenCode context/compaction hooks, skills, commands and
-integration tests. The current installation method is `install.py`.
+This repository contains a native OpenCode V2 package entrypoint, a versioned
+cached Python runtime, the standalone search engine, and the portable `install.py`
+workflow. The package is in development at `0.1.0-dev.0`; GitHub release-candidate
+and npm publication are the next distribution milestones.
 
-The next packaging stage is a native OpenCode V2 package plugin: register MCP
-servers, bundled guidance and commands directly; bootstrap a versioned cached
-runtime; and extend `/search-init` with repository policy discovery. GitHub/npm
-installation through `opencode plugin add` becomes available once that package
-entrypoint is implemented and tested.
+The package registers MCP servers, guidance, commands and context/compaction hooks
+directly. `/search-init` creates only project settings and policy; Python setup is
+lazy, isolated and shared through a content-addressed user cache. Automatic
+migration of installer-based integrations and corpus-path suggestions remain
+planned. Existing copied installations continue to own their registrations.
 
 Install this self-contained directory into another Git repository to give coding
 agents committed-source search with independent code, literature and reference
@@ -30,6 +31,8 @@ and dependencies are independent.
 
 ```text
 opencode-repo-search/
+├── package.json               # Native ESM package and explicit artifact file list
+├── plugin/                    # Package entrypoint, lazy bootstrap and initialization
 ├── install.py                 # Dependency-free installer, dry run and config merge
 ├── LICENSE                    # BSD-3-Clause redistribution terms
 ├── README.md
@@ -68,7 +71,87 @@ Private installation uses a separate `.opencode/search-local/` runtime and a
 locally ignored plugin. That plugin registers MCPs, guidance and commands through
 OpenCode V2 without editing tracked project configuration or `AGENTS.md`.
 
-## Install into a repository
+## Native package (development)
+
+Requires OpenCode V2 **>=2.0.15, <3**, Git and `uv` on macOS/Linux. Node.js 22+
+and npm are needed to build/test the package; `uv` provisions Python 3.12 when
+needed. The plugin uses a dependency-free JavaScript default export.
+
+Build and install a local artifact from this checkout:
+
+```sh
+npm pack
+npm install --prefix /path/to/plugin-cache --ignore-scripts --no-audit --no-fund \
+  ./opencode-repo-search-0.1.0-dev.0.tgz
+```
+
+For development, load the installed entrypoint from an auto-discovered
+`.opencode/plugins/repo-search-package.js` (or a global loader under
+`~/.config/opencode/plugins/`):
+
+```js
+export { default } from "/path/to/plugin-cache/node_modules/opencode-repo-search/plugin/index.js"
+```
+
+Put a project-local development loader in local Git excludes when keeping the
+integration private. The installed-artifact smoke test verifies this loading
+method on OpenCode 2.0.15.
+
+The V2 documentation also specifies directory entries in `plugins`:
+
+```jsonc
+{
+  "plugins": ["/path/to/plugin-cache/node_modules/opencode-repo-search"]
+}
+```
+
+In the tested 2.0.15 installation, configuration-only discovery did not load the
+package or a minimal standalone plugin. Resolving that discovery issue and
+validating direct GitHub installation are release gates. Use the auto-discovered
+loader for development and choose only one loading method.
+
+In a fresh Git repository, run:
+
+```text
+/search-init
+/search-init git-ignore
+/search-status
+```
+
+`git-ignore` creates locally ignored settings under `.opencode/search-package/`.
+`git-commit` creates a focused local commit of those settings and selects upstream
+policy; publish that commit to the configured source branch before indexing.
+Neither action copies the runtime into the target project. Both accept
+`--dry-run`, `--remote`, `--branch`, `--db`, and `--corpora repository,references`.
+Policy edits and corpus selections are detected automatically and reconnect the
+affected MCP processes. No project is indexed until initialized.
+
+The context hook and slash commands provide the exact package launcher path. Its
+CLI can also be used directly:
+
+```sh
+uv run --no-project --isolated --no-config --python 3.12 python \
+  /path/to/plugin-cache/node_modules/opencode-repo-search/plugin/launch.py \
+  sync --root /path/to/repository --corpus repository
+```
+
+The first search command prepares the locked environment under
+`$XDG_CACHE_HOME/repo-search/runtimes/` (default `~/.cache/repo-search/runtimes/`).
+Concurrent starts serialize setup; only a complete runtime gets a ready pointer.
+Setup progress goes to stderr, preserving MCP stdout. Failed/interrupted attempts
+can be retried with the same command. New versions/source fingerprints use
+separate caches; older runtimes and published indexes remain available.
+
+The npm artifact includes runtime sources, `uv.lock`, guidance and BSD license,
+and excludes environments, models, databases, tests and generated caches.
+Once a candidate tag is published, GitHub installation can use
+`opencode plugin add 'github:VanaMartin/opencode-repo-search#TAG'`. The CLI installs
+globally; repository initialization remains explicit. Use a configured local path
+for local artifacts (`plugin add` does not accept tarballs).
+
+## Portable installer
+
+Use this workflow from a source checkout or GitHub source bundle.
 
 Prerequisites: Git, `uv`, Python 3.12 (which `uv` can provision), upstream access,
 and network access for the initial locked dependencies and MiniLM model download.

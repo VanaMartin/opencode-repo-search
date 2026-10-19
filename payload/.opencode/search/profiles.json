@@ -24,7 +24,7 @@
       "exclude": [
         ".git/**", ".venv/**", "**/.venv/**", "**/__pycache__/**",
         "**/target/**", "**/node_modules/**", "**/dist/**", "**/build/**",
-        ".opencode/search/**", ".opencode/search-local/**",
+        ".opencode/search/**", ".opencode/search-local/**", ".opencode/search-package/**",
         ".claude/worktrees/**", ".worktrees/**",
         "docs/_build/**", "docs/literature/**",
         "docs/references/**", "reference/**", "literature/**", "kb/**",
