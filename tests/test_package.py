@@ -44,6 +44,7 @@ def package(tmp_path_factory):
         "package.json",
         "LICENSE",
         "README.md",
+        "index.js",
         "plugin/index.js",
         "plugin/launch.py",
         "plugin/bootstrap.py",
@@ -116,6 +117,12 @@ def test_installed_entrypoint(package):
             "--input-type=module",
             "-e",
             "import plugin from 'opencode-repo-search'; "
+            "import { createRequire } from 'node:module'; "
+            "import { pathToFileURL } from 'node:url'; "
+            "const require = createRequire(import.meta.url); "
+            "const local = await import(pathToFileURL(require.resolve("
+            "'./node_modules/opencode-repo-search/index'))); "
+            "if (local.default !== plugin) throw new Error('Directory/package exports differ'); "
             "if (plugin.id !== 'opencode-repo-search' || typeof plugin.setup !== 'function') "
             "throw new Error('Invalid package export')",
         ],

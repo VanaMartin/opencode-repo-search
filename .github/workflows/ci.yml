@@ -59,6 +59,7 @@ jobs:
           node --check payload/.opencode/search/private-plugin.js
           node --check payload/.opencode/search/registration.js
           node --check plugin/index.js
+          node --check index.js
           npm test
       - name: Check source syntax and license headers
         run: |
@@ -145,9 +146,9 @@ jobs:
 
           required = {
               "LICENSE", "README.md", "AGENTS.md", "install.py", "verify.sh",
-              "package.json", "plugin/index.js", "plugin/launch.py", "plugin/bootstrap.py",
+              "package.json", "index.js", "plugin/index.js", "plugin/launch.py", "plugin/bootstrap.py",
               "plugin/project.py", "payload/.opencode/search/registration.js",
-              "tests/test_package.py", "tests/test_plugin.mjs",
+              "tests/test_package.py", "tests/test_plugin.mjs", "tests/smoke_opencode.py",
               "tests/test_bundle.py", "examples/add-corpus.json", "examples/reference-note.md",
               "payload/.claude/skills/repo-knowledge-search/SKILL.md",
               "payload/.opencode/commands/search-status.md",

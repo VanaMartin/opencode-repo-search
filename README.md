@@ -32,6 +32,7 @@ and dependencies are independent.
 ```text
 opencode-repo-search/
 ├── package.json               # Native ESM package and explicit artifact file list
+├── index.js                   # Root entrypoint for directory/package loading
 ├── plugin/                    # Package entrypoint, lazy bootstrap and initialization
 ├── install.py                 # Dependency-free installer, dry run and config merge
 ├── LICENSE                    # BSD-3-Clause redistribution terms
@@ -85,19 +86,8 @@ npm install --prefix /path/to/plugin-cache --ignore-scripts --no-audit --no-fund
   ./opencode-repo-search-0.1.0-dev.0.tgz
 ```
 
-For development, load the installed entrypoint from an auto-discovered
-`.opencode/plugins/repo-search-package.js` (or a global loader under
-`~/.config/opencode/plugins/`):
-
-```js
-export { default } from "/path/to/plugin-cache/node_modules/opencode-repo-search/plugin/index.js"
-```
-
-Put a project-local development loader in local Git excludes when keeping the
-integration private. The installed-artifact smoke test verifies this loading
-method on OpenCode 2.0.15.
-
-The V2 documentation also specifies directory entries in `plugins`:
+Add the installed directory to `plugins` in your OpenCode user configuration
+(`~/.config/opencode/opencode.jsonc`) or project configuration:
 
 ```jsonc
 {
@@ -105,10 +95,11 @@ The V2 documentation also specifies directory entries in `plugins`:
 }
 ```
 
-In the tested 2.0.15 installation, configuration-only discovery did not load the
-package or a minimal standalone plugin. Resolving that discovery issue and
-validating direct GitHub installation are release gates. Use the auto-discovered
-loader for development and choose only one loading method.
+The root `index.js` supports OpenCode's local-directory resolver as well as npm
+package imports. Directory loading has been verified on OpenCode 2.0.15. An
+auto-discovered `.opencode/plugins/repo-search-package.js` can also re-export the
+installed `index.js` for development. Choose one loading method; keep a private
+project-local loader in local Git excludes.
 
 In a fresh Git repository, run:
 
@@ -267,6 +258,7 @@ reference-note requirements, other MCP clients, provenance and troubleshooting.
 
 ```sh
 sh verify.sh
+npm test
 ```
 
 Verification runs in the locked runtime with real Git repositories, LanceDB,
@@ -274,6 +266,21 @@ MiniLM embeddings and MCP stdio. It creates temporary test repositories and
 isolated databases and checks installation, provenance, retrieval modes,
 multi-corpus/worktree sharing, automatic refresh and failure preservation.
 Fixture repositories and databases are created in temporary test directories.
+
+With OpenCode installed, run the live package acceptance check:
+
+```sh
+python3.12 tests/smoke_opencode.py
+# Also exercise the real Git-package installer at a branch, tag or commit:
+python3.12 tests/smoke_opencode.py \
+  --git-package 'github:VanaMartin/opencode-repo-search#REVISION'
+```
+
+The check uses isolated OpenCode configuration, state and search runtimes, loads
+the npm-installed directory, then verifies initialization, MCP connection, shared
+model loading, retrieval/provenance and preservation of tracked project settings.
+`--git-package` repeats the check after `opencode plugin add`. The printed work
+directory retains logs and a JSON report; `--workdir` selects a fresh directory.
 
 ### GitHub Actions
 
@@ -286,7 +293,8 @@ checkout into a path containing spaces.
 
 Dependency and model downloads are cached; select `cold_cache` when manually
 running CI to exercise uncached setup. Each platform uploads JUnit test results.
-Once all checks pass, CI uploads the tested source bundle as a workflow artifact.
+Once all checks pass, CI uploads the tested source and npm bundles as workflow
+artifacts.
 
 ## Later tarball
 

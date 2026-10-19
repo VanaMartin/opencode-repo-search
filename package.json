@@ -3,10 +3,12 @@
   "version": "0.1.0-dev.0",
   "description": "Committed-upstream repository and reference search for OpenCode V2",
   "type": "module",
+  "main": "./index.js",
   "exports": {
-    ".": "./plugin/index.js"
+    ".": "./index.js"
   },
   "files": [
+    "index.js",
     "plugin/*.js",
     "plugin/*.py",
     "payload/.opencode/search/run.py",
