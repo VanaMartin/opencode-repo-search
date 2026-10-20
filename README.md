@@ -17,9 +17,9 @@ and npm publication are the next distribution milestones.
 
 The package registers MCP servers, guidance, commands and context/compaction hooks
 directly. `/search-init` creates only project settings and policy; Python setup is
-lazy, isolated and shared through a content-addressed user cache. Automatic
-migration of installer-based integrations and corpus-path suggestions remain
-planned. Existing copied installations continue to own their registrations.
+lazy, isolated and shared through a content-addressed user cache. Initialization
+reports advisory corpus-path suggestions from a committed tree. Existing copied
+installations keep their registrations until explicitly adopted with `/search-migrate`.
 
 Install this self-contained directory into another Git repository to give coding
 agents committed-source search with independent code, literature and reference
@@ -117,6 +117,13 @@ Neither action copies the runtime into the target project. Both accept
 Policy edits and corpus selections are detected automatically and reconnect the
 affected MCP processes. No project is indexed until initialized.
 
+Initialization reports per-corpus file counts, path examples, nonstandard source
+paths, reference/literature candidates, invalid literature-note declarations and
+enabled-corpus overlap. Suggestions use the cached configured upstream commit
+(or local `HEAD` when that ref is absent), with the basis and commit reported.
+They do not fetch, install Python dependencies, change policy or enable corpora.
+Review suggested reference exclusions alongside includes to keep corpora separate.
+
 The context hook and slash commands provide the exact package launcher path. Its
 CLI can also be used directly:
 
@@ -133,12 +140,51 @@ Setup progress goes to stderr, preserving MCP stdout. Failed/interrupted attempt
 can be retried with the same command. New versions/source fingerprints use
 separate caches; older runtimes and published indexes remain available.
 
+An MCP connection can precede the first complete index. `status` and `table_details`
+report `ready_for_queries`, `readiness`, and `refresh.phase`, with file/chunk and
+embedding-batch counts when available. Phases cover fetch, model loading, parsing,
+embedding and publication. A failed refresh can still leave an older complete
+snapshot ready for queries; freshness/currency is reported independently.
+
 The npm artifact includes runtime sources, `uv.lock`, guidance and BSD license,
 and excludes environments, models, databases, tests and generated caches.
 Once a candidate tag is published, GitHub installation can use
 `opencode plugin add 'github:VanaMartin/opencode-repo-search#TAG'`. The CLI installs
 globally; repository initialization remains explicit. Use a configured local path
 for local artifacts (`plugin add` does not accept tarballs).
+
+### Adopt a portable installation
+
+Install/load the package, then use its migration command:
+
+```text
+/search-migrate
+/search-migrate git-ignore --dry-run
+/search-migrate git-ignore
+```
+
+The equivalent launcher arguments are `init --migrate [git-ignore|git-commit]`.
+No action previews the adoption. `git-ignore` keeps the package metadata private;
+`git-commit` explicitly commits it for an existing shared-policy installation.
+Private policy must first be converted through the portable installer's shared
+workflow before `git-commit` migration; that conversion intentionally changes its
+policy identity. Migration itself preserves profile path/content, policy source,
+upstream, enabled/custom corpora and database/table identity. It accepts no
+identity-changing setup overrides. Edit the reported policy/runtime files after adoption.
+
+The package overrides installer-owned MCP/command/skill entries by name/ID and
+removes retired managed MCP names from the effective configuration. Existing
+shared reminder hooks are reused. A private installer loader becomes a no-op,
+with its original bytes backed up under Git metadata. Customized registration
+files or MCP definitions require reconciliation before adoption.
+
+Tracked configuration, shared guidance and policies stay in place during private
+adoption. Copied runtimes remain available for other clients. Compatible complete
+indexes are reused without reembedding. Disconnect old MCPs and stop an incompatible
+installer daemon before the first package search, using the portable runtime's
+`service stop`. Keep older clients disconnected until their runtime is upgraded.
+The package detects completed adoption automatically. Repeating adoption is
+idempotent; it refuses to overwrite subsequently edited package runtime settings.
 
 ## Portable installer
 
@@ -271,6 +317,8 @@ With OpenCode installed, run the live package acceptance check:
 
 ```sh
 python3.12 tests/smoke_opencode.py
+# Also validate adoption of private and shared portable installations:
+python3.12 tests/smoke_opencode.py --migration
 # Also exercise the real Git-package installer at a branch, tag or commit:
 python3.12 tests/smoke_opencode.py \
   --git-package 'github:VanaMartin/opencode-repo-search#REVISION'

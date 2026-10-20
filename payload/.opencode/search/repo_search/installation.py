@@ -29,7 +29,15 @@ def write(path: Path, raw: bytes):
     temporary.replace(path)
 
 
-def apply(root: Path, runtime: Path, action: str | None, *, dry_run=False, message=None):
+def apply(
+    root: Path,
+    runtime: Path,
+    action: str | None,
+    *,
+    dry_run=False,
+    message=None,
+    preserve_policy=False,
+):
     state_path = runtime / "install.json"
     state = json.loads(state_path.read_bytes())
     relative_runtime = runtime.relative_to(root)
@@ -95,8 +103,9 @@ def apply(root: Path, runtime: Path, action: str | None, *, dry_run=False, messa
         return result
     settings_path = runtime / "runtime.json"
     settings = json.loads(settings_path.read_bytes())
-    settings["policy_source"] = "local" if action == "git-ignore" else "upstream"
-    settings["profile"] = str(relative_runtime / "profiles.json")
+    if not preserve_policy:
+        settings["policy_source"] = "local" if action == "git-ignore" else "upstream"
+        settings["profile"] = str(relative_runtime / "profiles.json")
     raw = encoded(settings)
     state["files"][str(relative_runtime / "runtime.json")] = hashlib.sha256(raw).hexdigest()
     state["visibility"] = result["visibility"]

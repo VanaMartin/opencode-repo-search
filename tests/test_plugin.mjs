@@ -24,16 +24,25 @@ assert.equal(plugin.id, "opencode-repo-search")
 
 function context(root) {
   const transforms = {}, hooks = {}, prompts = []
+  const callbacks = {}
   let reloads = 0
   const domain = (name) => ({
-    transform: async (callback) => { transforms[name] = callback },
+    transform: async (callback) => {
+      const items = callbacks[name] ??= new Set()
+      items.add(callback)
+      transforms[name] = (editor) => { for (const item of items) item(editor) }
+      return { dispose: async () => { items.delete(callback) } }
+    },
     reload: async () => { reloads++ },
   })
   return {
     app: { version: "2.0.15" }, location: { directory: root },
     mcp: domain("mcp"), skill: domain("skill"), command: domain("command"),
     session: {
-      hook: async (name, callback) => { hooks[name] = callback },
+      hook: async (name, callback) => {
+        hooks[name] = callback
+        return { dispose: async () => { if (hooks[name] === callback) delete hooks[name] } }
+      },
       prompt: async (input) => { prompts.push(input) },
     },
     transforms, hooks, prompts, reloads: () => reloads,
@@ -52,7 +61,7 @@ test("package registers lazily, reloads policy and cleans up its watcher", async
     assert.equal(servers.size, 0)
     ctx.transforms.command({ add: (value) => commands.set(value.name, value) })
     ctx.transforms.skill({ add: (value) => skills.set(value.id, value) })
-    assert.equal(commands.size, 3)
+    assert.equal(commands.size, 4)
     assert.match(skills.get("repo-knowledge-search").content, /committed/i)
     await commands.get("search-init").execute({
       sessionID: "test", prompt: { text: "git-ignore", files: [] }, delivery: "queue",
@@ -88,24 +97,50 @@ test("package registers lazily, reloads policy and cleans up its watcher", async
     assert.equal(ctx.reloads(), 2)
     ctx.transforms.mcp({ set: (name, value) => servers.set(name, value) })
     assert.notDeepEqual(servers.get("lancedb").command, firstCommand)
-    cleanup()
+    await cleanup()
     cleanup = undefined
   } finally {
-    cleanup?.()
+    await cleanup?.()
     await rm(root, { recursive: true, force: true })
   }
 })
 
 test("existing copied integration retains its registrations", async () => {
   const root = await mkdtemp(join(tmpdir(), "repo-search legacy "))
+  let cleanup
   try {
     await mkdir(join(root, ".opencode/search-local"), { recursive: true })
     await writeFile(join(root, ".opencode/search-local/install.json"), "{}")
     const ctx = context(root)
-    await plugin.setup(ctx)
-    assert.deepEqual(ctx.transforms, {})
+    cleanup = await plugin.setup(ctx)
+    assert.deepEqual(Object.keys(ctx.transforms), ["command"])
+    const commands = new Map()
+    ctx.transforms.command({ add: (value) => commands.set(value.name, value) })
+    assert.deepEqual([...commands.keys()], ["search-migrate"])
     assert.deepEqual(ctx.hooks, {})
+    await commands.get("search-migrate").execute({
+      sessionID: "test", prompt: { text: "git-ignore --dry-run", files: [] }, delivery: "steer",
+    })
+    assert.match(ctx.prompts[0].text, /init --migrate/)
+    const directory = join(root, ".opencode/search-package")
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, "profiles.json"), JSON.stringify(profile))
+    await writeFile(join(directory, "runtime.json"), JSON.stringify({
+      profile: ".opencode/search-package/profiles.json", policy_source: "local",
+    }))
+    await writeFile(join(directory, "install.json"), JSON.stringify({ migration: {
+      sources: [".opencode/search-local"], servers: ["old-search"], legacy_hooks: true,
+    } }))
+    const deadline = Date.now() + 6000
+    while (!ctx.reloads() && Date.now() < deadline) await setTimeout(50)
+    assert.equal(ctx.reloads(), 1)
+    const servers = new Map([["old-search", {}]])
+    ctx.transforms.mcp({ set: (name, value) => servers.set(name, value),
+      remove: (name) => servers.delete(name) })
+    assert.deepEqual([...servers.keys()], ["lancedb"])
+    assert.deepEqual(ctx.hooks, {}) // One existing shared reminder hook remains authoritative.
   } finally {
+    await cleanup?.()
     await rm(root, { recursive: true, force: true })
   }
 })

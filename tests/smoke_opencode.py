@@ -115,7 +115,7 @@ class Server:
             self.log.close()
 
 
-def scenario(base, spec=None):
+def scenario(base, spec=None, installer=None):
     base.mkdir(parents=True)
     env = environment(base)
 
@@ -156,6 +156,8 @@ def scenario(base, spec=None):
     upstream, root = base / "upstream.git", base / "project with spaces"
     git("init", "--bare", "-q", "--initial-branch=main", upstream)
     git("clone", "-q", upstream, root)
+    git("-C", root, "config", "user.name", "Search Test")
+    git("-C", root, "config", "user.email", "search@example.invalid")
     (root / "src").mkdir()
     (root / "src/solver.py").write_text(
         'def solve(matrix):\n    """Reuse symbolic ordering."""\n    return matrix\n'
@@ -178,6 +180,41 @@ def scenario(base, spec=None):
         "initialize package acceptance fixture",
     )
     git("-C", root, "push", "-q", "origin", "main")
+    legacy = None
+    if installer:
+        run(
+            [
+                "uv",
+                "run",
+                "--no-project",
+                "--isolated",
+                "--no-config",
+                "--python",
+                "3.12",
+                "python",
+                BUNDLE / "install.py",
+                root,
+                "git-ignore" if installer == "private" else "git-commit",
+                "--db",
+                base / "search-db",
+            ],
+            cwd=base,
+            env=env,
+        )
+        if installer == "shared":
+            git("-C", root, "push", "-q", "origin", "main")
+        runtime = root / ".opencode" / ("search-local" if installer == "private" else "search")
+        legacy = [
+            "uv",
+            "run",
+            "--project",
+            runtime,
+            "--python",
+            "3.12",
+            "--frozen",
+            "python",
+            runtime / "run.py",
+        ]
     initial = git("-C", root, "rev-parse", "HEAD").strip()
     tree = git("-C", root, "write-tree")
     launcher = [
@@ -207,13 +244,19 @@ def scenario(base, spec=None):
         plugin = next(item for item in plugins if item.get("id") == "opencode-repo-search")
         assert plugin["state"]["status"] == "active", plugin
         commands = server.get("command")["data"]
-        assert {"search-init", "search-status", "search-sync", "team-smoke"} <= {
+        assert {"search-init", "search-status", "search-sync", "search-migrate", "team-smoke"} <= {
             item["name"] for item in commands
         }
-        assert not server.get("mcp")["data"]
         assert not (base / "cache/repo-search/runtimes").exists()
-        assert search("init")["visibility"] == "undecided"
-        search("init", "git-ignore", "--db", base / "search-db")
+        if legacy:
+            run([*legacy, "sync", "--root", root], cwd=base, env=env)
+            before = json.loads(run([*legacy, "catalog", "--root", root], cwd=base, env=env))
+            search("init", "git-ignore", "--migrate")
+            assert search("catalog") == before
+        else:
+            assert not server.get("mcp")["data"]
+            assert search("init")["visibility"] == "undecided"
+            search("init", "git-ignore", "--db", base / "search-db")
         wait_for(
             lambda: server.get("mcp"),
             lambda result: (
@@ -224,19 +267,41 @@ def scenario(base, spec=None):
                 )
             ),
         )
-        assert any(item["id"] == "repo-knowledge-search" for item in server.get("skill")["data"])
+        wait_for(
+            lambda: server.get("skill"),
+            lambda result: (
+                result
+                and any(
+                    item["id"] == "repo-knowledge-search" and str(package) in item.get("path", "")
+                    for item in result["data"]
+                )
+            ),
+        )
+        names = [item["name"] for item in server.get("command")["data"]]
+        assert all(
+            names.count(name) == 1 for name in ("search-init", "search-status", "search-sync")
+        )
+        servers = server.get("mcp")["data"]
+        assert [item["name"] for item in servers].count("lancedb") == 1
         search("sync")
         result = search("query", "symbolic ordering", "--mode", "hybrid")
         assert result["results"][0]["path"] == "src/solver.py", result
         assert result["freshness"]["source_commit"] == initial
-        assert result["freshness"]["policy"]["source"] == "local"
+        assert result["freshness"]["policy"]["source"] == (
+            "upstream" if installer == "shared" else "local"
+        )
         assert result["freshness"]["integrity"] == "complete"
+        assert result["freshness"]["ready_for_queries"]
         assert not git("-C", root, "status", "--porcelain=v1").strip()
         assert git("-C", root, "write-tree") == tree
-        health = search("service", "status")
-        assert health["loaded_models"] == 1 and health["proxy_pids"], health
+        # A migration can briefly expose the old connection while OpenCode starts
+        # its replacement. Wait for a live daemon lease, not only registry status.
+        health = wait_for(
+            lambda: search("service", "status"),
+            lambda result: result.get("loaded_models") == 1 and result.get("proxy_pids"),
+        )
         return {
-            "mode": "git" if spec else "directory",
+            "mode": "migration-" + installer if installer else "git" if spec else "directory",
             "target": spec or str(package),
             "plugin": plugin,
             "source_commit": initial,
@@ -261,6 +326,9 @@ def main():
     parser.add_argument(
         "--workdir", type=Path, help="Fresh directory for isolated state and diagnostics"
     )
+    parser.add_argument(
+        "--migration", action="store_true", help="Also adopt private/shared installers"
+    )
     args = parser.parse_args()
     base = (
         args.workdir.resolve()
@@ -272,6 +340,9 @@ def main():
     reports = [scenario(base / "directory")]
     if args.git_package:
         reports.append(scenario(base / "git", args.git_package))
+    if args.migration:
+        for layout in ("private", "shared"):
+            reports.append(scenario(base / ("migration-" + layout), installer=layout))
     (base / "report.json").write_text(json.dumps(reports, indent=2) + "\n")
     print(json.dumps(reports, indent=2))
 

@@ -11,7 +11,9 @@ import json
 import signal
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import AsyncExitStack
 from pathlib import Path
 
@@ -397,6 +399,40 @@ def test_unchanged_snapshot_and_other_corpus_policy_do_not_allocate_rows(
     assert current["published_table"] == old["published_table"]
 
 
+def test_first_index_progress_is_distinct_from_query_readiness(repos, tmp_path, monkeypatch):
+    _, worker, _ = repos
+    source = MainSource.discover(worker)
+    db = tmp_path / "db"
+    assert core.status(source, db, source.table)["readiness"] == "not_indexed"
+    reached, resume = threading.Event(), threading.Event()
+    original = core.encode
+
+    def hold_batch(*args, **kwargs):
+        reached.set()
+        if not resume.wait(30):
+            raise RuntimeError("Embedding progress test did not release its batch")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(core, "encode", hold_batch)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        indexing = pool.submit(core.ensure_main, source, db, source.table, force=True)
+        try:
+            assert reached.wait(60)
+            status = core.status(source, db, source.table)
+            assert status["readiness"] == "indexing" and not status["ready_for_queries"]
+            assert status["refresh"]["phase"] == "embedding"
+            assert status["refresh"]["embeddings_total"] > 0
+            assert status["refresh"]["embedded"] == 0
+            assert status["integrity"] == "absent"
+        finally:
+            resume.set()
+        indexing.result(timeout=60)
+    status = core.status(source, db, source.table)
+    assert status["readiness"] == "ready" and status["ready_for_queries"]
+    assert status["refresh"]["phase"] == "complete"
+    assert status["refresh"]["embedded"] == status["refresh"]["embeddings_total"]
+
+
 def test_failed_reference_refresh_keeps_snapshot_and_code_can_advance(repos, tmp_path):
     author, worker, _ = repos
     db = tmp_path / "db"
@@ -417,6 +453,7 @@ def test_failed_reference_refresh_keeps_snapshot_and_code_can_advance(repos, tmp
     status = core.status(notes, db, notes.table)
     assert status["integrity"] == "complete" and status["upstream"]["state"] == "behind"
     assert status["refresh"]["state"] == "failed"
+    assert status["ready_for_queries"] and status["readiness"] == "ready"
     assert core.query(notes, db, notes.table, "bilinear", "fts", 5)["results"]
     assert core.ensure_main(code, db, code.table, force=True)["source_commit"] == newest
 

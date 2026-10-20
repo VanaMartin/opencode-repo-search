@@ -49,6 +49,10 @@ selects upstream policy; publish them on the configured source branch before
 search. Both accept `--dry-run`, `--remote`, `--branch`, `--db` and
 `--corpora repository,references`. An existing policy is preserved. Initialization
 detects the configured remote's default branch, falling back to `main`.
+Setup reports advisory committed-path counts/suggestions, note-declaration errors
+and enabled-corpus overlap. Its cached-upstream or local-HEAD basis is explicit;
+it does not fetch or apply suggestions. Review reference includes and repository
+exclusions together before enabling another corpus.
 
 Use the package launcher command supplied by the context hook/slash command,
 followed by `catalog`, `sync`, `status`, `query`, `mcp` or `service stop` and
@@ -69,8 +73,29 @@ Cached versions and index generations are retained; automatic cache cleanup is
 not implemented.
 
 When an installer-owned `install.json` is present in `.opencode/search/` or
-`.opencode/search-local/`, the package defers to that installation's registrations.
-Automatic migration is a later stage; continue using its installed commands.
+`.opencode/search-local/`, the package defers search registrations and provides
+`/search-migrate`. No argument previews adoption; `git-ignore --dry-run` validates
+the private plan and `git-ignore` applies it. The launcher equivalent is
+`init --migrate git-ignore`. For an existing upstream-policy installation,
+`git-commit` explicitly commits package metadata. A local-policy installation
+must use the portable shared conversion before `git-commit` migration.
+
+Adoption keeps original policy paths/content, upstream settings, policy source,
+custom corpora and database/table identities. Its Git action controls metadata
+visibility, independently of the inherited policy source. It writes package
+`runtime.json` and `install.json`, retaining the old policy in place. Identity-changing
+setup overrides are rejected during migration; edit the reported files afterward.
+Repeating migration preserves customized package settings by refusing to overwrite
+them when they differ from the installer.
+
+Package transforms replace managed MCP/command/skill entries by name/ID, including
+retired server removal. Existing shared reminder hooks remain the sole hook owner.
+An owned private loader becomes a no-op; its original bytes are backed up in
+the Git common directory under `repo-search/migrations/`. Customized registrations
+must be reconciled first. Private adoption preserves tracked config and guidance;
+copied runtimes remain available. Disconnect old MCPs and stop any incompatible
+installer daemon before first package use, then keep older clients disconnected
+until upgraded. Compatible complete index generations are reused.
 
 ### Explicit Git visibility
 
@@ -123,6 +148,13 @@ sh .opencode/search/search.sh service stop
 - `mcp` mounts one corpus; first queries wait for its initial indexing attempt.
 - `service status` inspects a running daemon without starting one. `stop` signals
   it; disconnect MCP mounts first so their next heartbeat does not restart it.
+
+MCP connectivity is separate from index readiness. `status`/`table_details` expose
+`ready_for_queries` and `readiness` (`not_indexed`, `indexing`, `failed`, `ready`).
+`refresh.phase` identifies fetching, selection, model loading, parsing, embedding,
+publication or completion, with selected-file, chunk and completed/total embedding
+counts when available. A complete older generation remains query-ready during a
+refresh failure; check upstream currency and refresh errors separately.
 
 Commands use installed `runtime.json` defaults for remote, branch and optional
 database, profile and `policy_source`. Explicit `--remote`, `--branch`, `--db`,
