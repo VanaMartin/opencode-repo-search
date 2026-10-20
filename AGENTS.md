@@ -22,8 +22,8 @@ This is the standalone `opencode-repo-search` project. Read `README.md` and
 - `tests/test_package.py` and `tests/test_plugin.mjs`: installed npm artifact,
   runtime bootstrap, real MCP and JavaScript registration/lifecycle checks.
 
-The package entrypoint is under development; release-candidate publication and
-installer-to-package migration are the next stages described in `README.md`.
+The package entrypoint supports explicit installer adoption and advisory setup
+inspection. Release-candidate validation/publication is the next stage in `README.md`.
 
 ## Contracts
 

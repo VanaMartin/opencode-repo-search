@@ -13,9 +13,11 @@ from pathlib import Path
 PACKAGE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE / "payload/.opencode/search"))
 
+from migration import installations, migrate  # noqa: E402
 from repo_search.git_source import MainSource  # noqa: E402
 from repo_search.installation import apply, encoded, git, write  # noqa: E402
 from repo_search.settings import validate_profile  # noqa: E402
+from suggestions import inspect_repository  # noqa: E402
 
 DIRECTORY = Path(".opencode/search-package")
 
@@ -30,23 +32,32 @@ def initialize(arguments: list[str]) -> dict:
     parser.add_argument("--corpora", help="Comma-separated enabled corpus names")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--message")
+    parser.add_argument("--migrate", action="store_true", help="Adopt installer policy in place")
     args = parser.parse_args(arguments)
     root = Path(git(args.root, "rev-parse", "--show-toplevel").stdout.strip()).resolve()
     directory = root / DIRECTORY
     state_path = directory / "install.json"
     previous = json.loads(state_path.read_bytes()) if state_path.exists() else {}
+    if args.migrate:
+        return migrate(root, args, previous)
     if not args.action:
+        settings_path = directory / "runtime.json"
+        saved = json.loads(settings_path.read_bytes()) if settings_path.exists() else {}
+        source = root / saved.get("profile", str(DIRECTORY / "profiles.json"))
+        if not source.exists():
+            source = PACKAGE / "payload/.opencode/search/profiles.json"
+        profile = json.loads(source.read_bytes())
+        validate_profile(profile)
         return {
             "visibility": previous.get("visibility", "undecided"),
             "choices": ["git-ignore", "git-commit"],
             "directory": str(directory),
             "next": "Choose git-ignore for local policy or git-commit for shared policy",
+            "installer_integrations": installations(root),
+            "inspection": inspect_repository(root, profile, saved),
         }
-    for layout in ("search", "search-local"):
-        if (root / ".opencode" / layout / "install.json").exists():
-            raise ValueError(
-                "Existing installer integration found; migrate it before package setup"
-            )
+    if installations(root):
+        raise ValueError("Existing installer integration found; use init --migrate to adopt it")
     profile_path = directory / "profiles.json"
     source = (
         profile_path
@@ -100,11 +111,13 @@ def initialize(arguments: list[str]) -> dict:
             "dry_run": True,
             "directory": str(directory),
             "files": list(state["files"]),
+            "inspection": inspect_repository(root, profile, settings),
         }
     for name, raw in files.items():
         write(directory / name, raw)
     write(state_path, encoded(state))
     result = apply(root, directory, args.action, message=args.message)
+    result["inspection"] = inspect_repository(root, profile, settings)
     result["next"] = (
         "Publish settings to the configured source branch, then run the package launcher sync"
         if args.action == "git-commit"

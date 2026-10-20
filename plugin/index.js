@@ -38,42 +38,65 @@ export default {
     } catch {
       // Global installation also loads at non-Git locations; init explains the requirement.
     }
-    // Existing copied installations own their registrations until explicitly migrated.
-    for (const layout of ["search-local", "search"]) {
-      if (await optionalJSON(join(root, ".opencode", layout, "install.json"))) return
-    }
     const directory = join(root, ".opencode/search-package")
     const launcher = ["uv", "run", "--no-project", "--isolated", "--no-config", "--python", "3.12", "python",
       join(home, "launch.py")]
-    let state, signature, closed = false
+    const guide = join(home, "../payload/docs/agent-search.md")
+    const instruction = (task, arguments_) =>
+      `Read ${JSON.stringify(guide)}. Package launcher: ${launcher.map(quote).join(" ")}. ` +
+      `Run ${task} --root ${quote(root)} with caller arguments: ${JSON.stringify(arguments_)}. ` +
+      "No init action means report choices only. Only an explicit git-commit action " +
+      "authorizes staging/committing; git-ignore uses local Git excludes. " +
+      "For status/sync inspect each enabled corpus with --corpus NAME unless selected. " +
+      "Report policy provenance, source commit, integrity and currency. " +
+      "MCP connectivity is separate from index readiness: inspect ready_for_queries and refresh.phase."
+    await ctx.command.transform((editor) => {
+      editor.add({ name: "search-migrate", description: "Adopt an installer integration into the package",
+        execute: async ({ sessionID, prompt, delivery }) => {
+          await ctx.session.prompt({ ...prompt, sessionID, delivery,
+            text: instruction("init --migrate", prompt.text),
+          })
+        },
+      })
+    })
+    let state, signature, dispose, hookMode, closed = false
     const refresh = async () => {
-      const settings = await optionalJSON(join(directory, "runtime.json"))
+      const legacy = []
+      for (const layout of ["search-local", "search"]) {
+        const path = `.opencode/${layout}`
+        if (await optionalJSON(join(root, path, "install.json"))) legacy.push(path)
+      }
+      const installation = await optionalJSON(join(directory, "install.json"))
+      const migration = installation?.migration
+      const deferred = legacy.some((path) => !migration?.sources.includes(path))
+      const settings = !deferred && await optionalJSON(join(directory, "runtime.json"))
       const profile = settings && await optionalJSON(join(root, settings.profile))
-      const next = JSON.stringify([settings, profile])
+      const next = JSON.stringify([settings, profile, migration, deferred])
       if (next === signature) return false
       if (closed) return false
       const revision = createHash("sha256").update(next).digest("hex")
       state = settings && profile ? {
         root, profile, runtimeLabel: launcher.map(quote).join(" "),
+        replacedServers: migration?.servers,
         command: (task, corpus) => [...launcher, task, "--root", root,
           "--configuration-revision", revision, "--corpus", corpus],
       } : undefined
+      if (deferred) {
+        await dispose?.()
+        dispose = undefined
+      } else if (!dispose || hookMode !== Boolean(migration?.legacy_hooks)) {
+        await dispose?.()
+        hookMode = Boolean(migration?.legacy_hooks)
+        dispose = await registerSearch(ctx, {
+          getState: () => state,
+          skillPath: join(home, "../payload/.claude/skills/repo-knowledge-search/SKILL.md"),
+          instruction, hooks: !hookMode,
+        })
+      }
       signature = next
       return true
     }
     await refresh()
-    const guide = join(home, "../payload/docs/agent-search.md")
-    await registerSearch(ctx, {
-      getState: () => state,
-      skillPath: join(home, "../payload/.claude/skills/repo-knowledge-search/SKILL.md"),
-      instruction: (task, arguments_) =>
-        `Read ${JSON.stringify(guide)}. Package launcher: ${launcher.map(quote).join(" ")}. ` +
-        `Run ${task} --root ${quote(root)} with caller arguments: ${JSON.stringify(arguments_)}. ` +
-        "No init action means report choices only. Only an explicit git-commit action " +
-        "authorizes staging/committing; git-ignore uses local Git excludes. " +
-        "For status/sync inspect each enabled corpus with --corpus NAME unless selected. " +
-        "Report policy provenance, source commit, integrity and currency.",
-    })
     let pending = false
     const timer = setInterval(async () => {
       if (pending) return
@@ -87,6 +110,6 @@ export default {
       }
     }, 2000)
     timer.unref?.()
-    return () => { closed = true; clearInterval(timer) }
+    return async () => { closed = true; clearInterval(timer); await dispose?.() }
   },
 }

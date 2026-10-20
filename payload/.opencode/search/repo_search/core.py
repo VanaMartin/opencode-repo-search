@@ -340,6 +340,16 @@ def describe(
         "policy": manifest.get("policy") if manifest else None,
         "state": state,
         "integrity": integrity,
+        "ready_for_queries": integrity == "complete",
+        "readiness": (
+            "ready"
+            if integrity == "complete"
+            else "indexing"
+            if refresh.get("state") in {"checking", "indexing"}
+            else "failed"
+            if refresh.get("state") == "failed"
+            else "not_indexed"
+        ),
         "upstream": {
             "state": currency,
             "checked_at": checked,
@@ -361,7 +371,9 @@ def status(source: MainSource, db_path: Path, table: str, *, interval=CHECK_INTE
     )
 
 
-def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = False) -> dict:
+def reconcile(
+    snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = False, progress=None
+) -> dict:
     """Build under the caller's writer lock and atomically publish a complete generation."""
     import lancedb
 
@@ -378,6 +390,12 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
         except ValueError:
             pass
     selected = snapshot.selected()
+
+    def report(phase, **counts):
+        if progress:
+            progress(phase, **counts)
+
+    report("selecting", files=len(selected))
     policy_key = fingerprint(
         {"embedding": snapshot.profile["embedding"], "corpus": snapshot.policy}
     )
@@ -414,6 +432,7 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
             }
     if healthy:
         old = stored.to_arrow().to_pylist()
+    report("loading_model")
     model, spec = embedding(snapshot.profile)
     if previous and previous["embedding"] != spec:
         raise ValueError("Embedding model/configuration changed; use a new logical table")
@@ -427,6 +446,7 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
         with _MODEL_LOCK:
             return transformer.tokenizer(*args, **kwargs)
 
+    report("parsing")
     records, hashes, parsed = make_records(
         snapshot,
         tokenize,
@@ -454,6 +474,14 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
         row["embedding_key"]: row["text"] for row in records if row["embedding_key"] not in cache
     }
     items = list(needed.items())
+    report(
+        "embedding",
+        chunks=len(records),
+        parsed_files=parsed,
+        embedded=0,
+        embeddings_total=len(items),
+        reused_rows=sum(row["embedding_key"] not in needed for row in records),
+    )
     for offset in range(0, len(items), 64):
         batch = items[offset : offset + 64]
         vectors = encode(snapshot.profile, [text for _, text in batch])
@@ -461,6 +489,7 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
             raise ValueError("Incomplete embedding batch")
         cache.update({key: vector for (key, _), vector in zip(batch, vectors, strict=True)})
         print(f"embedded {min(offset + 64, len(items))}/{len(items)}", file=sys.stderr)
+        report("embedding", embedded=min(offset + 64, len(items)))
     for row in records:
         row["vector"] = cache[row["embedding_key"]]
     old_by_id = {row["id"]: row for row in old}
@@ -473,6 +502,7 @@ def reconcile(snapshot: Snapshot, db_path: Path, table: str, *, plan: bool = Fal
         for row in records
     )
     generation = f"{table}_g_{uuid.uuid4().hex}"
+    report("publishing")
     candidate = db.create_table(generation, data=records, schema=schema(model, parser))
     candidate.create_fts_index(
         "text",
@@ -550,6 +580,7 @@ def ensure_main(
             "state": "checking",
             "attempted_at": time.time(),
             "fetch_ok": False,
+            "phase": "fetching",
         }
         if not plan:
             write_json(refresh_path, refresh)
@@ -563,8 +594,14 @@ def ensure_main(
             )
             if not plan:
                 write_json(refresh_path, refresh)
-            result = reconcile(snapshot, db_path, table, plan=plan)
-            refresh.update(state="complete", completed_at=time.time())
+
+            def progress(phase, **counts):
+                refresh.update(phase=phase, **counts)
+                if not plan:
+                    write_json(refresh_path, refresh)
+
+            result = reconcile(snapshot, db_path, table, plan=plan, progress=progress)
+            refresh.update(state="complete", phase="complete", completed_at=time.time())
             if not plan:
                 write_json(refresh_path, refresh)
             return result

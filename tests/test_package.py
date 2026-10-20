@@ -49,6 +49,8 @@ def package(tmp_path_factory):
         "plugin/launch.py",
         "plugin/bootstrap.py",
         "plugin/project.py",
+        "plugin/migration.py",
+        "plugin/suggestions.py",
         "payload/.opencode/search/registration.js",
         "payload/.opencode/search/uv.lock",
         "payload/.opencode/search/pyproject.toml",
@@ -107,6 +109,7 @@ def launch(package, root, *arguments, env=None, check=True):
         capture_output=True,
         text=True,
         check=check,
+        timeout=180,
     )
 
 
@@ -184,6 +187,209 @@ def test_package_shared_commit_and_upstream_policy(package, project, tmp_path):
     catalog = json.loads(launch(package, root, "catalog", env=env).stdout)
     assert catalog["policy"]["source"] == "upstream"
     assert catalog["source_commit"] == result["commit"]
+
+
+def test_initialization_suggestions_use_committed_upstream_and_keep_corpora_separate(
+    package, project
+):
+    root = project
+    for name, body in {
+        "engine/math.rs": "pub fn solve() {}\n",
+        "knowledge/guide.md": "# Solver architecture\nGeneral reference.\n",
+        "knowledge/paper.md": "# Paper\n\n**Source:** https://doi.org/10.1234/example\n\n"
+        "**Pagination:** Printed pages 1–10.\n",
+        "literature/incomplete.md": "# Inventory\nNot a valid literature note.\n",
+    }.items():
+        path = root / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(body)
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "add nonstandard source and reference paths")
+    git(root, "push", "-q", "origin", "main")
+    upstream = git(root, "rev-parse", "origin/main")
+    (root / "local-only.rs").write_text("pub fn unpublished() {}\n")
+    git(root, "add", "local-only.rs")
+    git(root, "commit", "-qm", "unpublished branch-only path")
+    (root / "untracked.rs").write_text("pub fn untracked() {}\n")
+    status = git(root, "status", "--porcelain=v1")
+    inspection = json.loads(launch(package, root, "init").stdout)["inspection"]
+    assert inspection["basis"] == "cached_upstream" and inspection["commit"] == upstream
+    assert inspection["ref"] == "refs/remotes/origin/main"
+    corpora = inspection["corpora"]
+    assert {s["pattern"] for s in corpora["repository"]["suggested_includes"]} == {"engine/**"}
+    assert "knowledge/guide.md" in {
+        s["pattern"] for s in corpora["references"]["suggested_includes"]
+    }
+    assert "knowledge/paper.md" in {s["pattern"] for s in corpora["articles"]["suggested_includes"]}
+    assert "knowledge/paper.md" not in {
+        s["pattern"] for s in corpora["references"]["suggested_includes"]
+    }
+    assert corpora["articles"]["invalid_notes"] == 1
+    assert not corpora["references"]["enabled"] and not corpora["articles"]["enabled"]
+    assert git(root, "status", "--porcelain=v1") == status
+    assert not (root / ".opencode").exists()
+
+
+@pytest.fixture(scope="module")
+def migration_environment(tmp_path_factory):
+    return {
+        **os.environ,
+        "XDG_CACHE_HOME": str(tmp_path_factory.mktemp("migration-runtime")),
+        "HF_HOME": os.environ.get("HF_HOME", str(Path.home() / ".cache/huggingface")),
+    }
+
+
+@pytest.mark.parametrize(
+    "private,action", [(False, "git-commit"), (False, "git-ignore"), (True, "git-ignore")]
+)
+@pytest.mark.parametrize("explicit_db", [False, True])
+def test_migration_preserves_policy_identity_and_local_work(
+    package, project, tmp_path, private, action, explicit_db, migration_environment
+):
+    root = project
+    installer_action = "git-ignore" if private else "git-commit"
+    subprocess.run(
+        [
+            sys.executable,
+            str(BUNDLE / "install.py"),
+            str(root),
+            installer_action,
+            *([] if private else ["--fragment-only"]),
+            *(["--db", str(tmp_path / "custom-db")] if explicit_db else []),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    layout = ".opencode/search-local" if private else ".opencode/search"
+    profile = root / layout / "profiles.json"
+    policy = json.loads(profile.read_bytes())
+    policy["corpora"]["repository"]["include"] = ["src/**"]
+    policy["corpora"]["references"]["server"] = "team-references"
+    policy["corpora"]["standards"] = {
+        **policy["corpora"]["references"],
+        "enabled": False,
+        "server": "team-standards",
+        "include": ["standards/**"],
+    }
+    profile.write_text(json.dumps(policy, indent=4) + "\n")
+    if not private:
+        fragment = json.loads((root / layout / "mcp.fragment.json").read_bytes())
+        # Ownership checks understand comments and trailing commas without rewriting them.
+        (root / "opencode.jsonc").write_text(
+            "// Shared configuration\n" + json.dumps(fragment, indent=2)[:-2] + ",\n}\n"
+        )
+        git(root, "add", "--force", str(profile), "opencode.jsonc")
+        git(root, "commit", "-qm", "customize shared policy")
+        git(root, "push", "-q", "origin", "main")
+    raw = profile.read_bytes()
+    (root / "AGENTS.md").write_text("# Staged team edit\n")
+    git(root, "add", "AGENTS.md")
+    (root / "AGENTS.md").write_text("# Unstaged team edit\n")
+    staged, head = git(root, "diff", "--cached"), git(root, "rev-parse", "HEAD")
+    config = (root / "opencode.jsonc").read_bytes()
+    env = {**os.environ, "XDG_CACHE_HOME": str(tmp_path / "package-cache")}
+    result = json.loads(launch(package, root, "init", "--migrate", env=env).stdout)
+    assert result["settings"]["profile"] == layout + "/profiles.json"
+    launch(package, root, "init", action, "--migrate", "--dry-run", env=env)
+    assert not (root / ".opencode/search-package").exists()
+    assert not (tmp_path / "package-cache").exists()
+    assert not (root / ".git/repo-search/policies").exists()
+    env = migration_environment
+    legacy = [sys.executable, str(root / layout / "run.py"), "catalog", "--root", str(root)]
+    before = json.loads(subprocess.check_output(legacy, env=env, cwd=root, text=True))
+    try:
+        subprocess.run(
+            [*legacy[:2], "sync", *legacy[3:]], env=env, cwd=root, check=True, capture_output=True
+        )
+        published = list(Path(before["db_uri"]).glob("*.manifest.json"))
+        assert len(published) == 1
+        manifest = published[0].read_bytes()
+        migrated = json.loads(launch(package, root, "init", action, "--migrate", env=env).stdout)
+        after = json.loads(launch(package, root, "catalog", env=env).stdout)
+        assert after == before
+        assert published[0].read_bytes() == manifest
+        reused = json.loads(launch(package, root, "sync", env=env).stdout)
+        assert reused["new_embeddings"] == reused["parsed_files"] == 0
+        hit = json.loads(launch(package, root, "query", "symbolic ordering", env=env).stdout)
+        assert hit["results"][0]["path"] == "src/solver.py"
+        assert profile.read_bytes() == raw
+        assert not (root / ".opencode/search-package/profiles.json").exists()
+        assert (root / "opencode.jsonc").read_bytes() == config
+        assert git(root, "diff", "--cached") == staged
+        assert (root / "AGENTS.md").read_text() == "# Unstaged team edit\n"
+        if action == "git-ignore":
+            assert git(root, "rev-parse", "HEAD") == head
+        if private:
+            assert Path(migrated["loader_backup"]).is_file()
+        if action == "git-commit":
+            assert migrated["commit"] != head
+            changes = git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+            assert all(n.startswith(".opencode/search-package/") for n in changes.splitlines())
+        launch(package, root, "init", action, "--migrate", env=env)  # Idempotent adoption.
+    finally:
+        launch(package, root, "service", "stop", env=env)
+
+
+@pytest.mark.parametrize(
+    "registration",
+    [
+        ".opencode/plugins/repo-search-private.js",
+        ".opencode/search-local/private-plugin.js",
+        ".opencode/search-local/guidance/SKILL.md",
+    ],
+)
+def test_migration_rejects_customized_registrations_without_writes(package, project, registration):
+    root = project
+    subprocess.run(
+        [sys.executable, str(BUNDLE / "install.py"), str(root), "git-ignore"],
+        check=True,
+        capture_output=True,
+    )
+    loader = root / registration
+    loader.write_text(loader.read_text() + "// Private customization\n")
+    initial = git(root, "status", "--porcelain=v1"), git(root, "diff", "--cached")
+    result = launch(package, root, "init", "git-ignore", "--migrate", check=False)
+    assert result.returncode and "Customized" in result.stderr
+    assert not (root / ".opencode/search-package").exists()
+    assert (git(root, "status", "--porcelain=v1"), git(root, "diff", "--cached")) == initial
+
+
+def test_migration_preserves_customized_mcp_configuration_on_conflict(package, project):
+    root = project
+    subprocess.run(
+        [sys.executable, str(BUNDLE / "install.py"), str(root), "git-commit", "--fragment-only"],
+        check=True,
+        capture_output=True,
+    )
+    config = root / "opencode.jsonc"
+    config.write_text(
+        json.dumps(
+            {
+                "mcp": {
+                    "servers": {
+                        "lancedb": {
+                            "type": "local",
+                            "command": ["team-owned-server"],
+                        }
+                    }
+                }
+            }
+        )
+    )
+    original = (
+        config.read_bytes(),
+        git(root, "status", "--porcelain=v1"),
+        git(root, "rev-parse", "HEAD"),
+    )
+    result = launch(package, root, "init", "git-ignore", "--migrate", check=False)
+    assert result.returncode and "MCP lancedb was customized" in result.stderr
+    assert not (root / ".opencode/search-package").exists()
+    assert (
+        config.read_bytes(),
+        git(root, "status", "--porcelain=v1"),
+        git(root, "rev-parse", "HEAD"),
+    ) == original
 
 
 def test_concurrent_bootstrap_and_real_mcp(package, project, tmp_path):
