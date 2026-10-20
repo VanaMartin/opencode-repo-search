@@ -57,6 +57,10 @@ jobs:
         run: |
           node --check payload/.opencode/plugins/repo-search.js
           node --check payload/.opencode/search/private-plugin.js
+          node --check payload/.opencode/search/registration.js
+          node --check plugin/index.js
+          node --check index.js
+          npm test
       - name: Check source syntax and license headers
         run: |
           uv run --no-project --python 3.12 python - <<'PY'
@@ -122,6 +126,9 @@ jobs:
           cache-dependency-glob: |
             payload/.opencode/search/pyproject.toml
             payload/.opencode/search/uv.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
       - name: Restore the embedding model cache
         if: ${{ !inputs.cold_cache }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -139,6 +146,9 @@ jobs:
 
           required = {
               "LICENSE", "README.md", "AGENTS.md", "install.py", "verify.sh",
+              "package.json", "index.js", "plugin/index.js", "plugin/launch.py", "plugin/bootstrap.py",
+              "plugin/project.py", "payload/.opencode/search/registration.js",
+              "tests/test_package.py", "tests/test_plugin.mjs", "tests/smoke_opencode.py",
               "tests/test_bundle.py", "examples/add-corpus.json", "examples/reference-note.md",
               "payload/.claude/skills/repo-knowledge-search/SKILL.md",
               "payload/.opencode/commands/search-status.md",
@@ -187,7 +197,7 @@ jobs:
           retention-days: 14
 
   bundle:
-    name: Verified source bundle
+    name: Verified source and npm bundles
     needs: [quality, integration]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -199,9 +209,22 @@ jobs:
         run: |
           git archive --format=tar.gz --prefix=opencode-repo-search/ \
             --output="$RUNNER_TEMP/opencode-repo-search.tgz" HEAD
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Build the tested npm package
+        run: |
+          mkdir "$RUNNER_TEMP/npm-package"
+          npm pack --pack-destination "$RUNNER_TEMP/npm-package"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: opencode-repo-search-${{ github.sha }}
           path: ${{ runner.temp }}/opencode-repo-search.tgz
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: opencode-repo-search-npm-${{ github.sha }}
+          path: ${{ runner.temp }}/npm-package/*.tgz
           if-no-files-found: error
           retention-days: 14

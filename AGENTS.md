@@ -11,15 +11,19 @@ This is the standalone `opencode-repo-search` project. Read `README.md` and
 `payload/docs/agent-search.md` before changing its installation or search contracts.
 
 - `install.py`: dependency-free repository installer and configuration merge.
+- `plugin/` and `package.json`: native ESM entrypoint, lazy cached bootstrap and
+  package-owned project initialization.
 - `payload/.opencode/search/repo_search/`: Git snapshots, parsing, indexing,
   querying, shared daemon and MCP proxy.
 - `payload/.opencode/search/pyproject.toml` and `uv.lock`: isolated Python runtime.
 - `payload/.opencode/plugins/repo-search.js`: OpenCode V2 context/compaction hooks.
 - `payload/.claude/skills/` and `payload/.opencode/commands/`: installed guidance.
 - `tests/test_bundle.py`: portable installer and runtime integration checks.
+- `tests/test_package.py` and `tests/test_plugin.mjs`: installed npm artifact,
+  runtime bootstrap, real MCP and JavaScript registration/lifecycle checks.
 
-The native package plugin/bootstrap is the next implementation stage described
-in `README.md`; the working installation path currently uses `install.py`.
+The package entrypoint is under development; release-candidate publication and
+installer-to-package migration are the next stages described in `README.md`.
 
 ## Contracts
 
@@ -45,6 +49,7 @@ Run functional tests in the shipped locked environment from the repository root:
 
 ```sh
 sh verify.sh
+npm test
 ```
 
 Run Python quality checks with the repository's Ruff configuration:

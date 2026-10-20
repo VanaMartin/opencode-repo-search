@@ -1,0 +1,38 @@
+{
+  "name": "opencode-repo-search",
+  "version": "0.1.0-dev.0",
+  "description": "Committed-upstream repository and reference search for OpenCode V2",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "plugin/*.js",
+    "plugin/*.py",
+    "payload/.opencode/search/run.py",
+    "payload/.opencode/search/pyproject.toml",
+    "payload/.opencode/search/uv.lock",
+    "payload/.opencode/search/profiles.json",
+    "payload/.opencode/search/registration.js",
+    "payload/.opencode/search/repo_search/*.py",
+    "payload/.claude/skills/repo-knowledge-search/SKILL.md",
+    "payload/docs/agent-search.md"
+  ],
+  "scripts": {
+    "test": "node --test tests/test_plugin.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VanaMartin/opencode-repo-search.git"
+  },
+  "bugs": {
+    "url": "https://github.com/VanaMartin/opencode-repo-search/issues"
+  },
+  "homepage": "https://github.com/VanaMartin/opencode-repo-search#readme"
+}
