@@ -311,7 +311,7 @@ def manage(arguments):
         result["next_steps"] = [
             "Resolve validation_errors and preview again before applying."
             if errors
-            else f"Confirm this exact proposal, then apply with --apply --expect-revision {revision}.",
+            else f"Confirm the proposal, then use --apply --expect-revision {revision}.",
             "Only after application: check /mcps, request /search-sync if needed, "
             "and verify /search-status. Shared policy needs publication first.",
         ]
