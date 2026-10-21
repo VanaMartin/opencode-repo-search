@@ -16,13 +16,20 @@ from project import initialize, settings
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "init":
-        result = initialize(sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] in {"init", "corpus"}:
+        if sys.argv[1] == "corpus":
+            from corpora import manage
+
+            result = manage(sys.argv[2:])
+        else:
+            result = initialize(sys.argv[2:])
         print(json.dumps(result, indent=2))
         if "next_steps" in result:
             print(f"\n{result['next']}\n\nNext steps:", file=sys.stderr)
             for index, step in enumerate(result["next_steps"], start=1):
                 print(f"{index}. {step}", file=sys.stderr)
+        if result.get("sync", {}).get("state") == "failed":
+            sys.exit(1)
         return
     parser = argparse.ArgumentParser(description=__doc__, add_help=False)
     parser.add_argument("command")

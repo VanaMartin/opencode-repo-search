@@ -5,6 +5,13 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 # Changelog
 
+## Unreleased
+
+- Natural-language `/search-corpus-add` and `/search-corpus-update`, backed by
+  validated, revision-checked policy previews/applications and optional resync.
+- Additive path broadening, explicit overlap/replacement controls, scientific-note
+  validation and clear private-policy rebuild/shared-publication guidance.
+
 ## 0.1.0-rc.1
 
 First GitHub release candidate for OpenCode V2 >=2.0.15, <3 on macOS/Linux.

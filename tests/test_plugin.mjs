@@ -61,7 +61,7 @@ test("package registers lazily, reloads policy and cleans up its watcher", async
     assert.equal(servers.size, 0)
     ctx.transforms.command({ add: (value) => commands.set(value.name, value) })
     ctx.transforms.skill({ add: (value) => skills.set(value.id, value) })
-    assert.equal(commands.size, 4)
+    assert.equal(commands.size, 6)
     assert.match(skills.get("repo-knowledge-search").content, /committed/i)
     await commands.get("search-init").execute({
       sessionID: "test", prompt: { text: "git-ignore", files: [] }, delivery: "queue",
@@ -124,7 +124,7 @@ test("existing copied integration retains its registrations", async () => {
     assert.deepEqual(Object.keys(ctx.transforms), ["command"])
     const commands = new Map()
     ctx.transforms.command({ add: (value) => commands.set(value.name, value) })
-    assert.deepEqual([...commands.keys()], ["search-migrate"])
+    assert.deepEqual([...commands.keys()], ["search-migrate", "search-corpus-add", "search-corpus-update"])
     assert.deepEqual(ctx.hooks, {})
     await commands.get("search-migrate").execute({
       sessionID: "test", prompt: { text: "git-ignore --dry-run", files: [] }, delivery: "steer",
@@ -158,4 +158,40 @@ test("unsupported OpenCode API versions fail with a useful message", async () =>
   const ctx = context(process.cwd())
   ctx.app.version = "1.9.0"
   await assert.rejects(plugin.setup(ctx), /OpenCode V2 >=2.0.15/)
+})
+
+test("corpus commands route natural language through reviewed validated edits", async () => {
+  const root = await mkdtemp(join(tmpdir(), "repo-search corpus commands "))
+  let cleanup
+  try {
+    const ctx = context(root)
+    cleanup = await plugin.setup(ctx)
+    const commands = new Map()
+    ctx.transforms.command({ add: (value) => commands.set(value.name, value) })
+    for (const [name, text] of [
+      ["search-corpus-add", "Scientific notes in docs/papers; infer the correct parser"],
+      ["search-corpus-update", "Broaden papers to include literature/extra and re-sync --apply"],
+    ]) {
+      const files = [{ uri: "file:///example/request.md" }]
+      await commands.get(name).execute({
+        sessionID: "corpora", prompt: { text, files }, delivery: "steer",
+      })
+      const result = ctx.prompts.at(-1)
+      assert.equal(result.delivery, "steer")
+      assert.equal(result.sessionID, "corpora")
+      assert.deepEqual(result.files, files)
+      assert.ok(result.text.includes(JSON.stringify(text)))
+      assert.match(result.text, /natural-language corpus/)
+      assert.match(result.text, /corpus inspect/)
+      assert.match(result.text, /Preview first/)
+      assert.match(result.text, /--expect-revision/)
+      assert.match(result.text, /--replace-lists/)
+      assert.match(result.text, /Never stage, commit, push/)
+      assert.match(result.text, /PDF ingestion is not implemented/)
+      assert.match(result.text, /private-policy rebuild warning/)
+    }
+  } finally {
+    await cleanup?.()
+    await rm(root, { recursive: true, force: true })
+  }
 })

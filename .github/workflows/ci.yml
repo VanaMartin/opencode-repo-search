@@ -158,7 +158,7 @@ jobs:
           required = {
               "LICENSE", "README.md", "AGENTS.md", "install.py", "verify.sh",
               "package.json", "index.js", "plugin/index.js", "plugin/launch.py", "plugin/bootstrap.py",
-              "plugin/project.py", "plugin/migration.py", "plugin/suggestions.py",
+              "plugin/project.py", "plugin/migration.py", "plugin/suggestions.py", "plugin/corpora.py",
               "payload/.opencode/search/registration.js",
               "tests/test_package.py", "tests/test_plugin.mjs", "tests/smoke_opencode.py",
               "tests/test_bundle.py", "examples/add-corpus.json", "examples/reference-note.md",

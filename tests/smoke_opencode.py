@@ -149,7 +149,7 @@ def install_package(base, env, spec=None):
     return package
 
 
-def scenario(base, spec=None, installer=None):
+def scenario(base, spec=None, installer=None, corpora=False):
     base.mkdir(parents=True)
     env = environment(base)
 
@@ -168,6 +168,14 @@ def scenario(base, spec=None, installer=None):
         'def solve(matrix):\n    """Reuse symbolic ordering."""\n    return matrix\n'
     )
     (root / "AGENTS.md").write_text("# Shared team guidance\n")
+    if corpora:
+        for name, text in {
+            "kb/one/guide.md": "# First\nFirstcorpusmarker reference.\n",
+            "reference/notes/extra.md": "# Extra\nSecondcorpusmarker expansion.\n",
+        }.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
     configuration = {"commands": {"team-smoke": {"template": "Inspect current source"}}}
     if not spec:
         configuration["plugins"] = [str(package)]
@@ -305,13 +313,80 @@ def scenario(base, spec=None, installer=None):
             lambda: search("service", "status"),
             lambda result: result.get("loaded_models") == 1 and result.get("proxy_pids"),
         )
+        managed_corpus = None
+        if corpora:
+            pid = health["pid"]
+            proposal = base / "corpus-proposal.json"
+            for operation, definition, marker, expected in (
+                (
+                    "add",
+                    {
+                        "enabled": True,
+                        "server": "team-notes",
+                        "parser": "source",
+                        "include": ["kb/one/**"],
+                        "exclude": [],
+                        "extensions": [".md"],
+                    },
+                    "firstcorpusmarker",
+                    "kb/one/guide.md",
+                ),
+                (
+                    "update",
+                    {"include": ["reference/notes/**"]},
+                    "secondcorpusmarker",
+                    "reference/notes/extra.md",
+                ),
+            ):
+                proposal.write_text(json.dumps(definition))
+                plan = search("corpus", operation, "notes", "--spec", proposal)
+                assert not plan["validation_errors"]
+                applied = search(
+                    "corpus",
+                    operation,
+                    "notes",
+                    "--spec",
+                    proposal,
+                    "--apply",
+                    "--expect-revision",
+                    plan["revision"],
+                    "--sync",
+                )
+                assert applied["sync"]["state"] == "complete"
+                assert [item["name"] for item in server.get("command")["data"]].count(
+                    "search-corpus-add"
+                ) == 1
+                table = search("status", "--corpus", "notes")["table"]
+                health = wait_for(
+                    lambda: search("service", "status"),
+                    lambda result, table=table: (
+                        result.get("corpora", {}).get(table, {}).get("mounts", 0) >= 1
+                    ),
+                )
+                assert health["pid"] == pid and health["loaded_models"] == 1
+                hit = search("query", marker, "--corpus", "notes", "--mode", "fts")
+                assert hit["results"][0]["path"] == expected
+            managed_corpus = {
+                "files": search("status", "--corpus", "notes")["files"],
+                "shared_model": True,
+                "added_and_broadened": True,
+            }
+            assert not git("-C", root, "status", "--porcelain=v1").strip()
+            assert git("-C", root, "write-tree") == tree
         return {
-            "mode": "migration-" + installer if installer else "git" if spec else "directory",
+            "mode": "corpus-management"
+            if corpora
+            else "migration-" + installer
+            if installer
+            else "git"
+            if spec
+            else "directory",
             "target": spec or str(package),
             "plugin": plugin,
             "source_commit": initial,
             "policy": result["freshness"]["policy"],
             "query_hit": "src/solver.py",
+            "managed_corpus": managed_corpus,
         }
     finally:
         server.close()
@@ -334,6 +409,9 @@ def main():
     parser.add_argument(
         "--migration", action="store_true", help="Also adopt private/shared installers"
     )
+    parser.add_argument(
+        "--corpora", action="store_true", help="Add, broaden and sync a running corpus"
+    )
     args = parser.parse_args()
     base = (
         args.workdir.resolve()
@@ -348,6 +426,8 @@ def main():
     if args.migration:
         for layout in ("private", "shared"):
             reports.append(scenario(base / ("migration-" + layout), installer=layout))
+    if args.corpora:
+        reports.append(scenario(base / "corpora", corpora=True))
     (base / "report.json").write_text(json.dumps(reports, indent=2) + "\n")
     print(json.dumps(reports, indent=2))
 

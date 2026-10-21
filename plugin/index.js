@@ -55,14 +55,38 @@ export default {
         "section containing the returned next_steps, including suggested commands. " +
         "Do not automatically execute those suggestions or push commits. " +
         "For a preview, dry run or failure, do not claim initialization succeeded or show a success checklist." : "")
+    const corpusInstruction = (operation, arguments_) =>
+      `Read ${JSON.stringify(guide)}, especially Native corpus management. ` +
+      `Package launcher: ${launcher.map(quote).join(" ")}. Root: ${quote(root)}. ` +
+      `This is a natural-language corpus ${operation} request, not raw CLI arguments: ${JSON.stringify(arguments_)}. ` +
+      `First run the launcher corpus inspect --root ${quote(root)} and inspect actual Git/source paths and samples. ` +
+      "Infer a proposed corpus entry/patch, never bibliographic facts or page declarations. " +
+      "Check current MCP names and choose an unused server name for a new corpus. " +
+      "Use reference_note only for Markdown notes with real title/Source/Pagination declarations; " +
+      "ordinary extracted paper text uses source, and PDF ingestion is not implemented. " +
+      "Use the validated corpus helper with a temporary JSON --spec file outside the worktree. " +
+      "Updates append supplied path/extension lists by default; use --replace-lists only for explicitly requested replacement. " +
+      "Preserve parser/server identity and unrelated corpora/settings. Only use --exclude-from with explicit approval. " +
+      "Preview first, show the concrete changes, selected-file counts, note errors, overlaps and private-policy rebuild warning. " +
+      "Unless the caller explicitly requests --apply or confirms the proposal, ask before applying. " +
+      "An empty request should ask for purpose/paths (and an existing corpus for update), not invent a selection. " +
+      "Apply using --apply --expect-revision from that reviewed preview; stale revisions need a new preview. " +
+      "Add --sync only when the caller requests re-syncing; private policy changes can rebuild all enabled corpora. " +
+      "Shared policy sync is deferred until publication. Never stage, commit, push or change Git visibility. " +
+      "Report applied/preview/failed/deferred state accurately and show returned next_steps."
     await ctx.command.transform((editor) => {
-      editor.add({ name: "search-migrate", description: "Adopt an installer integration into the package",
-        execute: async ({ sessionID, prompt, delivery }) => {
-          await ctx.session.prompt({ ...prompt, sessionID, delivery,
-            text: instruction("init --migrate", prompt.text),
-          })
-        },
-      })
+      for (const [name, description, promptText] of [
+        ["search-migrate", "Adopt an installer integration into the package",
+          (text) => instruction("init --migrate", text)],
+        ["search-corpus-add", "Describe and add an independent search corpus",
+          (text) => corpusInstruction("add", text)],
+        ["search-corpus-update", "Describe corpus changes, broaden paths and optionally re-sync",
+          (text) => corpusInstruction("update", text)],
+      ]) {
+        editor.add({ name, description, execute: async ({ sessionID, prompt, delivery }) => {
+          await ctx.session.prompt({ ...prompt, sessionID, delivery, text: promptText(prompt.text) })
+        } })
+      }
     })
     let state, signature, dispose, hookMode, closed = false
     const refresh = async () => {

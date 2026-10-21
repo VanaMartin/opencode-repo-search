@@ -143,6 +143,39 @@ enabled-corpus overlap. Suggestions use the cached configured upstream commit
 They do not fetch, install Python dependencies, change policy or enable corpora.
 Review suggested reference exclusions alongside includes to keep corpora separate.
 
+### Add or broaden a corpus
+
+Use natural language with the native package commands:
+
+```text
+/search-corpus-add Scientific paper notes in docs/papers; propose a papers corpus
+/search-corpus-update papers Also include literature/notes, keeping the existing paths
+/search-corpus-update papers --apply --sync Also include literature/extra
+```
+
+The agent inspects the current policy and committed/local source, infers a proposed
+entry or patch, and previews file counts, invalid notes, overlaps and rebuild costs.
+Confirm the proposal to apply it, or explicitly request `--apply`. Empty input asks
+for the corpus purpose/paths; it does not invent a configuration. Use `--sync` to
+request reconciliation after applying. Shared-policy sync waits for publication.
+
+Updates append include/exclude/extension lists by default, so broadening does not
+erase previous paths. Replacing a list or excluding paths from another corpus
+requires an explicit request. Existing parser/server identities and unrelated
+configuration are preserved. Editing an entire private profile changes its hash,
+so **all enabled corpora may rebuild**, not just the edited corpus; old indexes
+are retained. Proposed changes explain this before application.
+
+Scientific Markdown with real title/Source/Pagination declarations can use the
+`reference_note` parser. General references and extracted paper text use `source`.
+The agent must not fabricate citation metadata; PDF/full-text ingestion is not
+implemented. Content still has to be committed on the configured upstream branch.
+
+The dependency-free launcher helper is `corpus inspect`, `corpus add NAME`, or
+`corpus update NAME`. Add/update take a JSON `--spec` file (or `-` for stdin),
+preview by default, and require `--apply --expect-revision REVISION` to write the
+reviewed edit. See the operations guide for the complete workflow.
+
 The context hook and slash commands provide the exact package launcher path. Its
 CLI can also be used directly:
 
@@ -320,8 +353,9 @@ reference-note requirements, other MCP clients, provenance and troubleshooting.
 - **Paths/languages:** change each corpus's include/exclude/extensions. Python
   uses AST anchors, Rust uses tree-sitter anchors, Markdown uses headings;
   other UTF-8 text uses tokenizer-bounded line chunks.
-- **Dual/multi-table:** add named entries under `corpora`, each with a distinct
-  `server`, then rerun `--configure-only --corpora name1,name2,...`. Each entry
+- **Dual/multi-table:** use `/search-corpus-add` with the native package, or add named
+  entries under `corpora`, each with a distinct `server`. Portable installations
+  then rerun `--configure-only --corpora name1,name2,...`. Each entry
   gets its own logical corpus and independently published LanceDB generations.
 - **Isolation:** defaults are derived from normalized upstream identity and the
   profile path, plus the policy hash for private installations. Use an explicit absolute `--db` if desired; assign a
@@ -351,6 +385,8 @@ With OpenCode installed, run the live package acceptance check:
 python3.12 tests/smoke_opencode.py
 # Also validate adoption of private and shared portable installations:
 python3.12 tests/smoke_opencode.py --migration
+# Add and broaden a corpus while OpenCode is running:
+python3.12 tests/smoke_opencode.py --corpora
 # Also exercise the real Git-package installer at a branch, tag or commit:
 python3.12 tests/smoke_opencode.py \
   --git-package 'github:VanaMartin/opencode-repo-search#REVISION'
