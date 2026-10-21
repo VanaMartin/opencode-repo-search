@@ -83,8 +83,11 @@ jobs:
 
           names = subprocess.check_output(["git", "ls-files", "-z"], text=True).split("\0")
           license_url = "https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE"
+          binary_image_suffixes = {".gif", ".ico", ".jpeg", ".jpg", ".png", ".webp"}
           for name in filter(None, names):
               path = Path(name)
+              if path.suffix.lower() in binary_image_suffixes:
+                  continue
               source = path.read_text(encoding="utf-8")
               if path.suffix == ".py":
                   ast.parse(source, filename=name)
