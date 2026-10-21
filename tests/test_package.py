@@ -51,6 +51,7 @@ def package(tmp_path_factory):
         "plugin/project.py",
         "plugin/migration.py",
         "plugin/suggestions.py",
+        "plugin/corpora.py",
         "payload/.opencode/search/registration.js",
         "payload/.opencode/search/uv.lock",
         "payload/.opencode/search/pyproject.toml",
