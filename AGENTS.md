@@ -21,6 +21,9 @@ This is the standalone `opencode-repo-search` project. Read `README.md` and
 - `tests/test_bundle.py`: portable installer and runtime integration checks.
 - `tests/test_package.py` and `tests/test_plugin.mjs`: installed npm artifact,
   runtime bootstrap, real MCP and JavaScript registration/lifecycle checks.
+- `docs/content/`, `mkdocs.yml`, `docs/hooks.py`: documentation site; canonical
+  operations/release/changelog references are included at build time.
+- `docs/pyproject.toml` and `docs/uv.lock`: separate documentation environment.
 
 The package entrypoint supports explicit installer adoption and advisory setup
 inspection. The first GitHub release candidate and its validation are described
@@ -58,6 +61,14 @@ Run Python quality checks with the repository's Ruff configuration:
 ```sh
 uv tool run --from ruff==0.15.21 ruff check .
 uv tool run --from ruff==0.15.21 ruff format --check .
+```
+
+For documentation changes, also run the strict site and link checks:
+
+```sh
+uv run --project docs --python 3.12 --frozen mkdocs build --strict
+python3.12 scripts/check_docs.py --site-dir site
+uv run --project docs --python 3.12 --frozen python -m unittest discover -s docs/tests -v
 ```
 
 For installer-only checks, use `install.py --dry-run` against a Git worktree with

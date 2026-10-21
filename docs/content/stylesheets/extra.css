@@ -1,0 +1,52 @@
+/* SPDX-License-Identifier: BSD-3-Clause
+ * License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
+ */
+
+:root {
+  --bs-link-color: #0f766e;
+  --bs-link-hover-color: #115e59;
+}
+
+[data-bs-theme="dark"] {
+  --bs-link-color: #5eead4;
+  --bs-link-hover-color: #99f6e4;
+}
+
+body {
+  line-height: 1.65;
+}
+
+.navbar.bg-dark {
+  background: linear-gradient(120deg, #12323f, #14212e) !important;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.025em;
+  font-weight: 650;
+}
+
+h2 {
+  margin-top: 2rem;
+}
+
+.lead {
+  max-width: 48rem;
+  font-size: 1.25rem;
+}
+
+pre {
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.feature-grid {
+  margin: 1.75rem 0;
+  padding: 1rem 1.5rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.75rem;
+  background: var(--bs-tertiary-bg);
+}
+
+.admonition {
+  border-radius: 0.5rem;
+}
