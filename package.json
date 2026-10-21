@@ -1,6 +1,6 @@
 {
   "name": "opencode-repo-search",
-  "version": "0.1.0-dev.0",
+  "version": "0.1.0-rc.1",
   "description": "Committed-upstream repository and reference search for OpenCode V2",
   "type": "module",
   "main": "./index.js",
@@ -8,6 +8,8 @@
     ".": "./index.js"
   },
   "files": [
+    "CHANGELOG.md",
+    "RELEASING.md",
     "index.js",
     "plugin/*.js",
     "plugin/*.py",

@@ -52,7 +52,7 @@ def environment(base):
     return env
 
 
-def wait_for(action, predicate, timeout=120):
+def wait_for(action, predicate, timeout=120, interval=0.25):
     deadline = time.monotonic() + timeout
     while True:
         value = action()
@@ -60,7 +60,7 @@ def wait_for(action, predicate, timeout=120):
             return value
         if time.monotonic() >= deadline:
             raise RuntimeError(f"Timed out waiting for OpenCode: {value}")
-        time.sleep(0.25)
+        time.sleep(interval)
 
 
 class Server:
@@ -115,13 +115,7 @@ class Server:
             self.log.close()
 
 
-def scenario(base, spec=None, installer=None):
-    base.mkdir(parents=True)
-    env = environment(base)
-
-    def git(*args):
-        return run(["git", *args], cwd=base, env=env)
-
+def install_package(base, env, spec=None):
     if spec:
         installed = run(["opencode", "plugin", "add", spec], cwd=base, env=env)
         print(installed.strip(), flush=True)
@@ -152,6 +146,17 @@ def scenario(base, spec=None, installer=None):
             env=env,
         )
         package = base / "artifact/node_modules/opencode-repo-search"
+    return package
+
+
+def scenario(base, spec=None, installer=None):
+    base.mkdir(parents=True)
+    env = environment(base)
+
+    def git(*args):
+        return run(["git", *args], cwd=base, env=env)
+
+    package = install_package(base, env, spec)
 
     upstream, root = base / "upstream.git", base / "project with spaces"
     git("init", "--bare", "-q", "--initial-branch=main", upstream)

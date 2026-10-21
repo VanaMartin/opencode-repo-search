@@ -519,7 +519,8 @@ def test_package_upgrade_keeps_previous_runtime_and_policy(package, project, tmp
     upgraded = tmp_path / "upgraded package"
     shutil.copytree(package, upgraded, ignore=shutil.ignore_patterns("__pycache__"))
     manifest = json.loads((upgraded / "package.json").read_bytes())
-    manifest["version"] = "0.1.0-dev.1"
+    major, minor, patch = manifest["version"].split("-", 1)[0].split(".")
+    manifest["version"] = f"{major}.{minor}.{int(patch) + 1}-test.0"
     (upgraded / "package.json").write_text(json.dumps(manifest))
     second = json.loads(launch(upgraded, project, "catalog", env=env).stdout)
     assert first == second

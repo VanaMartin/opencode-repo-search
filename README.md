@@ -12,8 +12,9 @@ literature-note and general-reference corpora backed by LanceDB.
 
 This repository contains a native OpenCode V2 package entrypoint, a versioned
 cached Python runtime, the standalone search engine, and the portable `install.py`
-workflow. The package is in development at `0.1.0-dev.0`; GitHub release-candidate
-and npm publication are the next distribution milestones.
+workflow. The first release candidate is `0.1.0-rc.1`, distributed through
+[GitHub releases](https://github.com/VanaMartin/opencode-repo-search/releases).
+npm registry publication remains pending.
 
 The package registers MCP servers, guidance, commands and context/compaction hooks
 directly. `/search-init` creates only project settings and policy; Python setup is
@@ -72,18 +73,29 @@ Private installation uses a separate `.opencode/search-local/` runtime and a
 locally ignored plugin. That plugin registers MCPs, guidance and commands through
 OpenCode V2 without editing tracked project configuration or `AGENTS.md`.
 
-## Native package (development)
+## Native package (release candidate)
 
 Requires OpenCode V2 **>=2.0.15, <3**, Git and `uv` on macOS/Linux. Node.js 22+
 and npm are needed to build/test the package; `uv` provisions Python 3.12 when
 needed. The plugin uses a dependency-free JavaScript default export.
 
-Build and install a local artifact from this checkout:
+Install the pinned GitHub candidate:
+
+```sh
+opencode plugin add 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.1'
+```
+
+This installs the plugin globally. Open a Git repository and use `/search-init`
+to choose private or shared project settings. Installing the package alone does
+not initialize or index projects. Existing portable installations use `/search-migrate`.
+
+For a local artifact, download the npm tarball from the same release or build it
+from this checkout:
 
 ```sh
 npm pack
 npm install --prefix /path/to/plugin-cache --ignore-scripts --no-audit --no-fund \
-  ./opencode-repo-search-0.1.0-dev.0.tgz
+  ./opencode-repo-search-0.1.0-rc.1.tgz
 ```
 
 Add the installed directory to `plugins` in your OpenCode user configuration
@@ -148,10 +160,23 @@ snapshot ready for queries; freshness/currency is reported independently.
 
 The npm artifact includes runtime sources, `uv.lock`, guidance and BSD license,
 and excludes environments, models, databases, tests and generated caches.
-Once a candidate tag is published, GitHub installation can use
-`opencode plugin add 'github:VanaMartin/opencode-repo-search#TAG'`. The CLI installs
-globally; repository initialization remains explicit. Use a configured local path
-for local artifacts (`plugin add` does not accept tarballs).
+Use a configured local path for local artifacts (`plugin add` does not accept
+tarballs). Release assets include the source bundle, npm tarball and SHA-256
+checksums. Download assets into one directory and verify them with
+`shasum -a 256 -c SHA256SUMS` before using a downloaded bundle.
+
+### Upgrade
+
+Install the new pinned package/tag with `opencode plugin add` and restart OpenCode
+locations using the previous version. Project policies, settings and published
+indexes remain in place. New package/runtime sources get a separate prepared
+Python environment; compatible daemon implementations share one model per database.
+If an older daemon is still running incompatible code, disconnect its MCP clients
+and run `service stop` with the previous package launcher before reconnecting.
+The next search reuses compatible embeddings while reconciling the snapshot.
+
+For candidate validation, archive checksums and publication steps, see
+[RELEASING.md](RELEASING.md).
 
 ### Adopt a portable installation
 
