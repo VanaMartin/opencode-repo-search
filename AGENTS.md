@@ -23,7 +23,8 @@ This is the standalone `opencode-repo-search` project. Read `README.md` and
   runtime bootstrap, real MCP and JavaScript registration/lifecycle checks.
 
 The package entrypoint supports explicit installer adoption and advisory setup
-inspection. Release-candidate validation/publication is the next stage in `README.md`.
+inspection. The first GitHub release candidate and its validation are described
+in `README.md`; stable and npm publication follow candidate acceptance.
 
 ## Contracts
 
