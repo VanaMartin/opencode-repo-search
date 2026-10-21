@@ -23,6 +23,8 @@ paths and symbol/heading anchors against your current checkout.
 [Quick start](#quick-start) · [Commands](#commands) ·
 [Corpus management](#add-or-broaden-a-corpus) · [Changelog](CHANGELOG.md)
 
+![Magnifying glass on books beside blank paper cards](assets/readme-hero.webp)
+
 ## Why use it?
 
 - **Separate corpora:** owned source, literature notes and general references have
