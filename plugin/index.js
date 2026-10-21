@@ -49,7 +49,12 @@ export default {
       "authorizes staging/committing; git-ignore uses local Git excludes. " +
       "For status/sync inspect each enabled corpus with --corpus NAME unless selected. " +
       "Report policy provenance, source commit, integrity and currency. " +
-      "MCP connectivity is separate from index readiness: inspect ready_for_queries and refresh.phase."
+      "MCP connectivity is separate from index readiness: inspect ready_for_queries and refresh.phase. " +
+      (task.startsWith("init") ?
+        'After an applied initialization succeeds, show its next message and a visible "Next steps" ' +
+        "section containing the returned next_steps, including suggested commands. " +
+        "Do not automatically execute those suggestions or push commits. " +
+        "For a preview, dry run or failure, do not claim initialization succeeded or show a success checklist." : "")
     await ctx.command.transform((editor) => {
       editor.add({ name: "search-migrate", description: "Adopt an installer integration into the package",
         execute: async ({ sessionID, prompt, delivery }) => {

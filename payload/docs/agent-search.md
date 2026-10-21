@@ -54,6 +54,15 @@ and enabled-corpus overlap. Its cached-upstream or local-HEAD basis is explicit;
 it does not fetch or apply suggestions. Review reference includes and repository
 exclusions together before enabling another corpus.
 
+After a successful applied initialization, show the returned `next` message and
+`next_steps` as a visible **Next steps** checklist, rather than only summarizing
+that settings were created. It includes policy review, `/mcps`, `/search-sync`,
+`/search-status` (`ready_for_queries: true`) and a first-search example. Shared
+policy must be published to the configured upstream branch before indexing.
+Do not execute these suggested commands or push commits automatically. Previews,
+dry runs and failed actions must not show a successful-initialization checklist.
+The launcher also prints this guidance to stderr; stdout remains valid JSON.
+
 Use the package launcher command supplied by the context hook/slash command,
 followed by `catalog`, `sync`, `status`, `query`, `mcp` or `service stop` and
 `--root /path/to/worktree`. It replaces `sh .opencode/search/search.sh` in the

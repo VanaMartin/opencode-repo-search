@@ -150,10 +150,23 @@ def test_package_init_is_explicit_and_preserves_local_work(package, project, tmp
     env = {**os.environ, "XDG_CACHE_HOME": str(tmp_path / "cache")}
     result = json.loads(launch(package, root, "init", env=env).stdout)
     assert result["visibility"] == "undecided"
+    assert "next_steps" not in result
     assert not (root / ".opencode").exists()
-    launch(package, root, "init", "git-ignore", "--dry-run", env=env)
+    preview = launch(package, root, "init", "git-ignore", "--dry-run", env=env)
+    assert "next_steps" not in json.loads(preview.stdout)
+    assert "Next steps:" not in preview.stderr
     assert not (root / ".opencode").exists()
-    launch(package, root, "init", "git-ignore", env=env)
+    applied = launch(package, root, "init", "git-ignore", env=env)
+    result = json.loads(applied.stdout)
+    assert "Next steps:" in applied.stderr
+    assert ".git/info/exclude (.gitignore is unchanged)" in applied.stderr
+    for step in result["next_steps"]:
+        assert step in applied.stderr
+    assert any(step.startswith("/mcps") and "lancedb" in step for step in result["next_steps"])
+    assert any(step.startswith("/search-sync") for step in result["next_steps"])
+    assert any("ready_for_queries: true" in step for step in result["next_steps"])
+    assert any("repo-knowledge-search" in step for step in result["next_steps"])
+    assert not any("shared policy commit" in step for step in result["next_steps"])
     assert not (tmp_path / "cache").exists()
     assert git(root, "rev-parse", "HEAD") == initial
     assert git(root, "diff", "--cached") == staged
@@ -173,7 +186,13 @@ def test_package_shared_commit_and_upstream_policy(package, project, tmp_path):
     (root / "AGENTS.md").write_text("# Staged team edit\n")
     git(root, "add", "AGENTS.md")
     staged = git(root, "diff", "--cached")
-    result = json.loads(launch(package, root, "init", "git-commit").stdout)
+    applied = launch(package, root, "init", "git-commit")
+    result = json.loads(applied.stdout)
+    assert "Next steps:" in applied.stderr
+    publish = next(i for i, step in enumerate(result["next_steps"]) if "publish" in step)
+    sync = next(i for i, step in enumerate(result["next_steps"]) if step.startswith("/search-sync"))
+    assert publish < sync
+    assert "origin/main" in result["next_steps"][publish]
     assert result["commit"] != initial
     assert git(root, "diff", "--cached") == staged
     changed = git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").splitlines()
@@ -181,12 +200,52 @@ def test_package_shared_commit_and_upstream_policy(package, project, tmp_path):
         name.startswith(".opencode/search-package/") for name in changed
     )
     assert git(root, "rev-parse", "origin/main") == initial
-    assert launch(package, root, "init", "git-ignore", check=False).returncode
+    rejected = launch(package, root, "init", "git-ignore", check=False)
+    assert rejected.returncode
+    assert "Next steps:" not in rejected.stderr
+    assert not rejected.stdout
     git(root, "push", "-q", "origin", "main")
     env = {**os.environ, "XDG_CACHE_HOME": str(tmp_path / "cache")}
     catalog = json.loads(launch(package, root, "catalog", env=env).stdout)
     assert catalog["policy"]["source"] == "upstream"
     assert catalog["source_commit"] == result["commit"]
+
+
+@pytest.mark.parametrize("enabled", [[], ["repository", "standards"]])
+def test_init_guidance_matches_enabled_corpora_without_starting_runtime(
+    package, project, tmp_path, enabled
+):
+    root = project
+    directory = root / ".opencode/search-package"
+    directory.mkdir(parents=True)
+    profile = json.loads((package / "payload/.opencode/search/profiles.json").read_bytes())
+    profile["corpora"]["standards"] = {
+        **profile["corpora"]["references"],
+        "server": "team-standards",
+    }
+    for name, policy in profile["corpora"].items():
+        policy["enabled"] = name in enabled
+    (directory / "profiles.json").write_text(json.dumps(profile))
+    env = {**os.environ, "XDG_CACHE_HOME": str(tmp_path / "cache")}
+    initial = git(root, "rev-parse", "HEAD")
+    applied = launch(package, root, "init", "git-ignore", env=env)
+    steps = json.loads(applied.stdout)["next_steps"]
+    if enabled:
+        connections = next(step for step in steps if step.startswith("/mcps"))
+        assert "lancedb, team-standards" in connections
+        assert "lancedb-articles" not in connections
+        assert "lancedb-references" not in connections
+        assert "repository, standards" in next(
+            step for step in steps if step.startswith("/search-sync")
+        )
+    else:
+        assert any("No corpora are enabled" in step for step in steps)
+        assert not any(
+            step.startswith(("/mcps", "/search-sync", "/search-status", "Ask:")) for step in steps
+        )
+    assert not (tmp_path / "cache").exists()
+    assert git(root, "rev-parse", "HEAD") == initial
+    assert not git(root, "status", "--porcelain=v1")
 
 
 def test_initialization_suggestions_use_committed_upstream_and_keep_corpora_separate(

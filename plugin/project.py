@@ -22,6 +22,50 @@ from suggestions import inspect_repository  # noqa: E402
 DIRECTORY = Path(".opencode/search-package")
 
 
+def completion_guidance(result: dict, profile: dict, config: dict) -> dict:
+    """Suggest follow-up actions without connecting MCPs or provisioning Python."""
+    enabled = {name: policy for name, policy in profile["corpora"].items() if policy["enabled"]}
+    path = config["profile"]
+    upstream = f"{config['remote']}/{config['branch']}"
+    steps = [f"Review {path}: include/exclude paths and enable only the corpora you need."]
+    if config["policy_source"] == "upstream":
+        steps.append(
+            f"Ensure the shared policy at {path} is published on {upstream} before indexing; "
+            "publish any new shared policy commit through your usual Git workflow. "
+            "Initialization never pushes."
+        )
+    if enabled:
+        servers = ", ".join(policy["server"] for policy in enabled.values())
+        steps.extend(
+            [
+                f"/mcps — confirm the enabled search MCPs ({servers}) connect after reload. "
+                "The first connection may take several minutes to download the runtime/model.",
+                f"/search-sync — build or refresh all enabled corpora ({', '.join(enabled)}) "
+                f"from committed {upstream} source, not working-tree changes.",
+                "/search-status — check ready_for_queries: true before searching; "
+                "otherwise inspect refresh.phase and any refresh error. "
+                "An MCP connection alone does not mean the first index is ready.",
+                'Ask: "Use repo-knowledge-search to search the enabled corpora for <your topic>."',
+            ]
+        )
+    else:
+        steps.append(
+            f"No corpora are enabled, so no search MCP is registered. Enable a corpus in {path}; "
+            "after automatic reload, use /mcps, /search-sync and /search-status."
+        )
+    result["next"] = (
+        (
+            "Settings saved privately using .git/info/exclude (.gitignore is unchanged)."
+            if result["visibility"] == "private"
+            else "Shared settings saved in a local commit."
+        )
+        + " OpenCode reloads valid settings automatically; "
+        "connection/index readiness is not yet checked."
+    )
+    result["next_steps"] = steps
+    return result
+
+
 def initialize(arguments: list[str]) -> dict:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", nargs="?", choices=["git-ignore", "git-commit"])
@@ -39,7 +83,14 @@ def initialize(arguments: list[str]) -> dict:
     state_path = directory / "install.json"
     previous = json.loads(state_path.read_bytes()) if state_path.exists() else {}
     if args.migrate:
-        return migrate(root, args, previous)
+        result = migrate(root, args, previous)
+        if args.action and not args.dry_run:
+            profile = json.loads((root / result["settings"]["profile"]).read_bytes())
+            # Retain adoption-specific daemon/reconnection advice as well.
+            next_step = result["next"]
+            completion_guidance(result, profile, result["settings"])
+            result["next_steps"].insert(0, next_step)
+        return result
     if not args.action:
         settings_path = directory / "runtime.json"
         saved = json.loads(settings_path.read_bytes()) if settings_path.exists() else {}
@@ -118,12 +169,7 @@ def initialize(arguments: list[str]) -> dict:
     write(state_path, encoded(state))
     result = apply(root, directory, args.action, message=args.message)
     result["inspection"] = inspect_repository(root, profile, settings)
-    result["next"] = (
-        "Publish settings to the configured source branch, then run the package launcher sync"
-        if args.action == "git-commit"
-        else "Run the package launcher sync; OpenCode reloads these settings automatically"
-    )
-    return result
+    return completion_guidance(result, profile, settings)
 
 
 def settings(root: Path) -> tuple[Path, dict]:
