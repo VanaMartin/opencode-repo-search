@@ -17,7 +17,12 @@ from project import initialize, settings
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "init":
-        print(json.dumps(initialize(sys.argv[2:]), indent=2))
+        result = initialize(sys.argv[2:])
+        print(json.dumps(result, indent=2))
+        if "next_steps" in result:
+            print(f"\n{result['next']}\n\nNext steps:", file=sys.stderr)
+            for index, step in enumerate(result["next_steps"], start=1):
+                print(f"{index}. {step}", file=sys.stderr)
         return
     parser = argparse.ArgumentParser(description=__doc__, add_help=False)
     parser.add_argument("command")

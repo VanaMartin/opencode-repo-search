@@ -117,6 +117,13 @@ Neither action copies the runtime into the target project. Both accept
 Policy edits and corpus selections are detected automatically and reconnect the
 affected MCP processes. No project is indexed until initialized.
 
+Successful initialization prints a **Next steps** checklist: review the selected
+policy, use `/mcps` to check the enabled connections, `/search-sync` to build or
+refresh the indexes, then `/search-status` to check `ready_for_queries` before
+asking your first search question. Shared policy must be published to the
+configured upstream branch first. These are suggestions, not automatically run
+commands. Private ignores are stored in `.git/info/exclude`; `.gitignore` is unchanged.
+
 Initialization reports per-corpus file counts, path examples, nonstandard source
 paths, reference/literature candidates, invalid literature-note declarations and
 enabled-corpus overlap. Suggestions use the cached configured upstream commit

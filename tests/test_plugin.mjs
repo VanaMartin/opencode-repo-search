@@ -69,6 +69,14 @@ test("package registers lazily, reloads policy and cleans up its watcher", async
     assert.equal(ctx.prompts[0].delivery, "queue")
     assert.match(ctx.prompts[0].text, /launch.py/)
     assert.match(ctx.prompts[0].text, /git-ignore/)
+    assert.match(ctx.prompts[0].text, /visible "Next steps"/)
+    assert.match(ctx.prompts[0].text, /returned next_steps/)
+    assert.match(ctx.prompts[0].text, /Do not automatically execute/)
+    assert.match(ctx.prompts[0].text, /preview, dry run or failure/)
+    await commands.get("search-status").execute({
+      sessionID: "test", prompt: { text: "", files: [] }, delivery: "queue",
+    })
+    assert.doesNotMatch(ctx.prompts[1].text, /visible "Next steps"/)
     const directory = join(root, ".opencode/search-package")
     await mkdir(directory, { recursive: true })
     await writeFile(join(directory, "profiles.json"), JSON.stringify(profile))
@@ -122,6 +130,7 @@ test("existing copied integration retains its registrations", async () => {
       sessionID: "test", prompt: { text: "git-ignore --dry-run", files: [] }, delivery: "steer",
     })
     assert.match(ctx.prompts[0].text, /init --migrate/)
+    assert.match(ctx.prompts[0].text, /returned next_steps/)
     const directory = join(root, ".opencode/search-package")
     await mkdir(directory, { recursive: true })
     await writeFile(join(directory, "profiles.json"), JSON.stringify(profile))
