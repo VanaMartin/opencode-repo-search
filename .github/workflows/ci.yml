@@ -174,7 +174,7 @@ jobs:
           }
           forbidden = {
               ".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache",
-              ".DS_Store", "node_modules", "dist", "build",
+              ".DS_Store", "node_modules", "dist", "build", "site",
           }
           with tarfile.open(os.environ["SOURCE_ARCHIVE"], "r:gz") as archive:
               files = set()

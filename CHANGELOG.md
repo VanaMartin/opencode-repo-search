@@ -7,6 +7,8 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Unreleased
 
+- Searchable GitHub Pages documentation, a focused quick-start README and live
+  per-job CI badges, with a separate locked docs build and main-only deployment.
 - Natural-language `/search-corpus-add` and `/search-corpus-update`, backed by
   validated, revision-checked policy previews/applications and optional resync.
 - Additive path broadening, explicit overlap/replacement controls, scientific-note
