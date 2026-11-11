@@ -7,6 +7,9 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Unreleased
 
+- Open generations and check logical-name collisions directly by table name,
+  avoiding false missing-generation errors from LanceDB's ten-name listing page.
+  Existing generations are retained; abandoned-generation cleanup remains separate.
 - Opt-in repository-private configuration shared through Git common metadata,
   explicit scope adoption, worktree-local overrides and configuration provenance;
   native MCP discovery follows OpenCode locations without retargeting other sessions.

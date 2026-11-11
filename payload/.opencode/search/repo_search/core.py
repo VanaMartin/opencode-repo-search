@@ -283,15 +283,27 @@ def writer_lock(db_path: Path, table: str):
         yield
 
 
+def open_table_if_exists(db, name: str):
+    """Probe an exact name; LanceDB 0.21.2 table listings default to ten results."""
+    try:
+        return db.open_table(name)
+    except ValueError as error:
+        # The pinned SDK exposes missing tables as ValueError, not a typed
+        # not-found exception. Do not hide corruption, permission or other errors.
+        if str(error) != f"Table '{name}' was not found":
+            raise
+        return None
+
+
 def open_published(db_path: Path, manifest: dict):
     """Pin one immutable generation; never reread the publication pointer mid-query."""
     import lancedb
 
     db = lancedb.connect(str(db_path))
     name = manifest["published_table"]
-    if name not in db.table_names():
+    table = open_table_if_exists(db, name)
+    if table is None:
         raise ValueError("Published generation is absent")
-    table = db.open_table(name)
     if table.version != manifest["table_version"]:
         raise ValueError("Published generation was externally modified")
     table.checkout(manifest["table_version"])
@@ -467,7 +479,7 @@ def reconcile(
     if plan:
         return {**summary, "mode": "plan"}
     db = lancedb.connect(str(db_path))
-    if table in db.table_names():
+    if open_table_if_exists(db, table) is not None:
         raise ValueError("Logical name collides with an existing table; use a new logical table")
     cache = {row["embedding_key"]: row["vector"] for row in old}
     needed = {
