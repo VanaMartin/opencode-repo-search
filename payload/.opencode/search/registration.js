@@ -33,7 +33,7 @@ export async function registerSearch(ctx, { getState, skillPath, instruction, ho
     ]) {
       editor.add({ name, description, execute: async ({ sessionID, prompt, delivery }) => {
         await ctx.session.prompt({ ...prompt, sessionID, delivery,
-          text: instruction(task, prompt.text),
+          text: await instruction(task, prompt.text),
         })
       } })
     }
@@ -41,7 +41,8 @@ export async function registerSearch(ctx, { getState, skillPath, instruction, ho
   if (hooks) registrations.push(await ctx.session.hook("context", (event) => {
     const state = getState()
     event.system.push({ type: "text", text: state ?
-      `Use repo-knowledge-search for conceptual discovery. Runtime: ${state.runtimeLabel}. ` +
+       `Use repo-knowledge-search for conceptual discovery. Runtime: ${state.runtimeLabel}. ` +
+       (state.configuration ? `Worktree/configuration: ${JSON.stringify(state.configuration)}. ` : "") +
       "Search source is a committed upstream snapshot; policy may be local and hashed. " +
       "Resolve current anchors and branch/staged/dirty/untracked deltas before editing. " +
       "Report source commit, policy provenance, integrity and currency separately." :

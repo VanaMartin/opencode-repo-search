@@ -80,7 +80,7 @@ class Server:
             stderr=self.log,
         )
 
-    def get(self, resource):
+    def get(self, resource, *, directory=None, method="GET", body=None):
         if self.process.poll() is not None:
             raise RuntimeError(f"OpenCode exited; inspect {self.path}")
         password = next(
@@ -95,12 +95,22 @@ class Server:
             return None
         authorization = base64.b64encode(("opencode:" + password).encode()).decode()
         request = urllib.request.Request(
-            self.url + "/api/" + resource + "?" + self.query,
-            headers={"Authorization": "Basic " + authorization},
+            self.url
+            + "/api/"
+            + resource
+            + "?"
+            + (
+                urllib.parse.urlencode({"location[directory]": str(directory)})
+                if directory
+                else self.query
+            ),
+            headers={"Authorization": "Basic " + authorization, "Content-Type": "application/json"},
+            method=method,
+            data=json.dumps(body).encode() if body is not None else None,
         )
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
-                return json.load(response)
+                return True if response.status == 204 else json.load(response)
         except (ConnectionError, TimeoutError, urllib.error.URLError):
             return None
 
@@ -149,7 +159,7 @@ def install_package(base, env, spec=None):
     return package
 
 
-def scenario(base, spec=None, installer=None, corpora=False):
+def scenario(base, spec=None, installer=None, corpora=False, worktrees=False):
     base.mkdir(parents=True)
     env = environment(base)
 
@@ -177,7 +187,11 @@ def scenario(base, spec=None, installer=None, corpora=False):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
     configuration = {"commands": {"team-smoke": {"template": "Inspect current source"}}}
-    if not spec:
+    if worktrees and not spec:
+        global_config = base / "config/opencode/opencode.json"
+        global_config.parent.mkdir(parents=True, exist_ok=True)
+        global_config.write_text(json.dumps({"plugins": [str(package)]}))
+    elif not spec:
         configuration["plugins"] = [str(package)]
     (root / "opencode.json").write_text(json.dumps(configuration, indent=2) + "\n")
     git("-C", root, "add", ".")
@@ -269,7 +283,13 @@ def scenario(base, spec=None, installer=None, corpora=False):
         else:
             assert not server.get("mcp")["data"]
             assert search("init")["visibility"] == "undecided"
-            search("init", "git-ignore", "--db", base / "search-db")
+            search(
+                "init",
+                "git-ignore",
+                "--db",
+                base / "search-db",
+                *(["--scope", "repository"] if worktrees else []),
+            )
         wait_for(
             lambda: server.get("mcp"),
             lambda result: (
@@ -314,6 +334,69 @@ def scenario(base, spec=None, installer=None, corpora=False):
             lambda result: result.get("loaded_models") == 1 and result.get("proxy_pids"),
         )
         managed_corpus = None
+        managed_worktrees = None
+        if worktrees:
+            worker, unrelated = base / "linked worker", base / "unrelated project"
+            git("-C", root, "worktree", "add", "-q", "-b", "worktree-acceptance", worker)
+            git("init", "-q", unrelated)
+            created = server.get(
+                "session",
+                method="POST",
+                body={"location": {"directory": str(root)}, "title": "Move acceptance"},
+            )
+            session_id = created["data"]["id"]
+            for destination in (worker, unrelated, root):
+                assert server.get(
+                    f"session/{session_id}/move",
+                    method="POST",
+                    body={"directory": str(destination)},
+                )
+                wait_for(
+                    lambda: server.get(f"session/{session_id}"),
+                    lambda result, destination=destination: (
+                        result and result["data"]["location"]["directory"] == str(destination)
+                    ),
+                )
+                servers = wait_for(
+                    lambda destination=destination: server.get("mcp", directory=destination),
+                    lambda result, destination=destination: (
+                        result
+                        and (
+                            not result["data"]
+                            if destination == unrelated
+                            else any(
+                                item["name"] == "lancedb"
+                                and item["status"]["status"] == "connected"
+                                for item in result["data"]
+                            )
+                        )
+                    ),
+                )
+                configuration = json.loads(
+                    run([*launcher, "configuration", "--root", destination], cwd=base, env=env)
+                )
+                assert configuration["source"] == (
+                    "none" if destination == unrelated else "repository-private"
+                )
+                if destination != unrelated:
+                    details = json.loads(
+                        run(
+                            [*launcher, "service", "status", "--root", destination],
+                            cwd=base,
+                            env=env,
+                        )
+                    )
+                    assert details["pid"] == health["pid"]
+                assert not (worker / ".opencode/search-package").exists()
+            # Another location's MCP must not be removed when one session moves.
+            assert any(
+                item["name"] == "lancedb" for item in server.get("mcp", directory=worker)["data"]
+            )
+            managed_worktrees = {
+                "session_move": "A -> B -> unrelated -> A",
+                "shared_daemon": True,
+                "copied_settings": False,
+            }
         if corpora:
             pid = health["pid"]
             proposal = base / "corpus-proposal.json"
@@ -374,7 +457,9 @@ def scenario(base, spec=None, installer=None, corpora=False):
             assert not git("-C", root, "status", "--porcelain=v1").strip()
             assert git("-C", root, "write-tree") == tree
         return {
-            "mode": "corpus-management"
+            "mode": "worktrees"
+            if worktrees
+            else "corpus-management"
             if corpora
             else "migration-" + installer
             if installer
@@ -387,10 +472,11 @@ def scenario(base, spec=None, installer=None, corpora=False):
             "policy": result["freshness"]["policy"],
             "query_hit": "src/solver.py",
             "managed_corpus": managed_corpus,
+            "managed_worktrees": managed_worktrees,
         }
     finally:
         server.close()
-        if (root / ".opencode/search-package/runtime.json").exists():
+        if worktrees or (root / ".opencode/search-package/runtime.json").exists():
             search("service", "stop")
             if health:
                 wait_for(
@@ -412,6 +498,11 @@ def main():
     parser.add_argument(
         "--corpora", action="store_true", help="Add, broaden and sync a running corpus"
     )
+    parser.add_argument(
+        "--worktrees",
+        action="store_true",
+        help="Move a real session across inherited and unconfigured locations",
+    )
     args = parser.parse_args()
     base = (
         args.workdir.resolve()
@@ -428,6 +519,8 @@ def main():
             reports.append(scenario(base / ("migration-" + layout), installer=layout))
     if args.corpora:
         reports.append(scenario(base / "corpora", corpora=True))
+    if args.worktrees:
+        reports.append(scenario(base / "worktrees", worktrees=True))
     (base / "report.json").write_text(json.dumps(reports, indent=2) + "\n")
     print(json.dumps(reports, indent=2))
 

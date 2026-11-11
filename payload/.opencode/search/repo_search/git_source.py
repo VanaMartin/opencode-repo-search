@@ -30,6 +30,11 @@ def policy_store(root: Path) -> Path:
 
 def pin_policy(root: Path, path: str) -> str:
     profile = json.loads((root / path).read_bytes())
+    return pin_profile(root, profile)
+
+
+def pin_profile(root: Path, profile: dict) -> str:
+    """Pin private policy independently of where its editable configuration lives."""
     validate_profile(profile)
     raw = (json.dumps(profile, sort_keys=True, ensure_ascii=False) + "\n").encode()
     digest = hashlib.sha256(raw).hexdigest()

@@ -117,6 +117,7 @@ test("existing copied integration retains its registrations", async () => {
   const root = await mkdtemp(join(tmpdir(), "repo-search legacy "))
   let cleanup
   try {
+    execFileSync("git", ["init", "-q", root])
     await mkdir(join(root, ".opencode/search-local"), { recursive: true })
     await writeFile(join(root, ".opencode/search-local/install.json"), "{}")
     const ctx = context(root)
@@ -193,5 +194,86 @@ test("corpus commands route natural language through reviewed validated edits", 
   } finally {
     await cleanup?.()
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("linked locations inherit repository-private settings without retargeting other sessions", async (t) => {
+  const base = await realpath(await mkdtemp(join(tmpdir(), "repo-search worktree locations ")))
+  const root = join(base, "original"), worker = join(base, "linked worker"), unrelated = join(base, "unrelated")
+  const cleanups = []
+  try {
+    execFileSync("git", ["init", "-q", root])
+    execFileSync("git", ["-C", root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+      "commit", "--allow-empty", "-qm", "fixture"])
+    execFileSync("git", ["-C", root, "worktree", "add", "-q", "-b", "worker", worker])
+    execFileSync("git", ["init", "-q", unrelated])
+    const directory = join(root, ".git/repo-search")
+    await mkdir(directory, { recursive: true })
+    await mkdir(join(root, ".opencode/search-local"), { recursive: true })
+    await writeFile(join(root, ".opencode/search-local/install.json"), "{}")
+    const sharedProfile = structuredClone(profile)
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      format: "repo-search-repository-config-v1", origin_worktree: root,
+      settings: { remote: "origin", branch: "main", profile: ".opencode/search-package/profiles.json", policy_source: "local" },
+      profile: sharedProfile, installation: { migration: {
+        sources: [".opencode/search-local"], servers: ["retired-search"], legacy_hooks: true,
+      } },
+    }))
+    const contexts = []
+    for (const location of [root, worker, unrelated]) {
+      const ctx = context(location)
+      ctx.mcp.list = async () => ({ data: location === unrelated ? [] : [{ name: "lancedb", status: { status: "connected" } }] })
+      cleanups.push(await plugin.setup(ctx))
+      contexts.push(ctx)
+    }
+    const definition = (ctx, entries = []) => {
+      const servers = new Map(entries)
+      ctx.transforms.mcp({ set: (name, value) => servers.set(name, value), remove: (name) => servers.delete(name) })
+      return servers
+    }
+    assert.equal(definition(contexts[0]).get("lancedb").cwd, root)
+    assert.equal(definition(contexts[1]).get("lancedb").cwd, worker)
+    assert.equal(definition(contexts[0], [["retired-search", {}]]).has("retired-search"), false)
+    assert.equal(definition(contexts[1], [["retired-search", { unrelated: true }]]).has("retired-search"), true)
+    assert.equal(definition(contexts[2]).size, 0)
+    for (const index of [0, 1, 2, 0]) {
+      const ctx = contexts[index], commands = new Map()
+      ctx.transforms.command({ add: (value) => commands.set(value.name, value) })
+      await commands.get("search-status").execute({ sessionID: "moving-session", prompt: { text: "", files: [] }, delivery: "queue" })
+      const prompt = ctx.prompts.at(-1).text
+      assert.ok(prompt.includes(ctx.location.directory))
+      assert.match(prompt, /MCP connection snapshot/)
+      assert.match(prompt, /index readiness\/integrity/)
+      assert.ok(prompt.includes(index === 2 ? '"source":"none"' : '"source":"repository-private"'))
+    }
+    assert.equal(definition(contexts[0]).get("lancedb").cwd, root)
+    assert.equal(definition(contexts[1]).get("lancedb").cwd, worker)
+    const event = { system: [] }
+    contexts[1].hooks.context(event)
+    assert.match(event.system[0].text, /"inherited":true/)
+    // A worktree-local override changes only that location's registration.
+    const local = join(worker, ".opencode/search-package")
+    await mkdir(local, { recursive: true })
+    const override = structuredClone(sharedProfile)
+    override.corpora.repository.server = "worker-search"
+    await writeFile(join(local, "profiles.json"), JSON.stringify(override))
+    await writeFile(join(local, "runtime.json"), JSON.stringify({ profile: ".opencode/search-package/profiles.json", policy_source: "local" }))
+    const deadline = Date.now() + 6000
+    while (!contexts[1].reloads() && Date.now() < deadline) await setTimeout(50)
+    assert.equal(contexts[1].reloads(), 1)
+    assert.deepEqual([...definition(contexts[1]).keys()], ["worker-search"])
+    assert.deepEqual([...definition(contexts[0]).keys()], ["lancedb"])
+    assert.equal(contexts[0].reloads(), 0)
+    const errors = []
+    t.mock.method(console, "error", (...args) => { errors.push(args.join(" ")) })
+    await writeFile(join(directory, "package.json"), "null")
+    const invalidDeadline = Date.now() + 6000
+    while (!errors.length && Date.now() < invalidDeadline) await setTimeout(50)
+    assert.ok(errors.some((error) => error.includes("Unsupported repository-private")))
+    assert.deepEqual([...definition(contexts[0]).keys()], ["lancedb"])
+    assert.equal(contexts[0].reloads(), 0) // Invalid data must not silently remove active MCPs.
+  } finally {
+    await Promise.all(cleanups.map((cleanup) => cleanup()))
+    await rm(base, { recursive: true, force: true })
   }
 })

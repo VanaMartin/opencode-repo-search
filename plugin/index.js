@@ -3,26 +3,14 @@
  * License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
  */
 
-import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
-import { readFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { promisify } from "node:util"
 import { registerSearch } from "../payload/.opencode/search/registration.js"
+import { optionalJSON, provenance, resolveConfiguration } from "./configuration.js"
 
 const home = dirname(fileURLToPath(import.meta.url))
-const run = promisify(execFile)
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'"
-
-async function optionalJSON(path) {
-  try {
-    return JSON.parse(await readFile(path, "utf8"))
-  } catch (error) {
-    if (error.code === "ENOENT") return undefined
-    throw error
-  }
-}
 
 export default {
   id: "opencode-repo-search",
@@ -33,16 +21,22 @@ export default {
       throw new Error("repo-search requires OpenCode V2 >=2.0.15 and <3")
     }
     let root = ctx.location.directory
-    try {
-      root = (await run("git", ["-C", root, "rev-parse", "--show-toplevel"])).stdout.trim()
-    } catch {
-      // Global installation also loads at non-Git locations; init explains the requirement.
-    }
-    const directory = join(root, ".opencode/search-package")
+    let configuration
     const launcher = ["uv", "run", "--no-project", "--isolated", "--no-config", "--python", "3.12", "python",
       join(home, "launch.py")]
     const guide = join(home, "../payload/docs/agent-search.md")
-    const instruction = (task, arguments_) =>
+    const instruction = async (task, arguments_) => {
+      let diagnostics = ""
+      if (task === "status") {
+        let servers = { state: "not_checked" }
+        try { servers = await ctx.mcp.list() } catch { /* Older supported hosts may not expose a status read. */ }
+        diagnostics = `Configuration: ${JSON.stringify(provenance(configuration))}. ` +
+          `OpenCode MCP connection snapshot: ${JSON.stringify(servers)}. ` +
+          "Show worktree/configuration provenance, MCP connectivity, index readiness/integrity, " +
+          "published upstream commit, currency and refresh error as separate fields. " +
+          "If no configuration exists, report not configured and suggest /search-init; do not run sync or reuse another location's MCP. "
+      }
+      return diagnostics +
       `Read ${JSON.stringify(guide)}. Package launcher: ${launcher.map(quote).join(" ")}. ` +
       `Run ${task} --root ${quote(root)} with caller arguments: ${JSON.stringify(arguments_)}. ` +
       "No init action means report choices only. Only an explicit git-commit action " +
@@ -55,6 +49,7 @@ export default {
         "section containing the returned next_steps, including suggested commands. " +
         "Do not automatically execute those suggestions or push commits. " +
         "For a preview, dry run or failure, do not claim initialization succeeded or show a success checklist." : "")
+    }
     const corpusInstruction = (operation, arguments_) =>
       `Read ${JSON.stringify(guide)}, especially Native corpus management. ` +
       `Package launcher: ${launcher.map(quote).join(" ")}. Root: ${quote(root)}. ` +
@@ -84,38 +79,42 @@ export default {
           (text) => corpusInstruction("update", text)],
       ]) {
         editor.add({ name, description, execute: async ({ sessionID, prompt, delivery }) => {
-          await ctx.session.prompt({ ...prompt, sessionID, delivery, text: promptText(prompt.text) })
+          await ctx.session.prompt({ ...prompt, sessionID, delivery, text: await promptText(prompt.text) })
         } })
       }
     })
     let state, signature, dispose, hookMode, closed = false
     const refresh = async () => {
+      const current = await resolveConfiguration(ctx.location.directory)
+      root = current.root
       const legacy = []
       for (const layout of ["search-local", "search"]) {
         const path = `.opencode/${layout}`
         if (await optionalJSON(join(root, path, "install.json"))) legacy.push(path)
       }
-      const installation = await optionalJSON(join(directory, "install.json"))
+      const installation = current.installation
       const migration = installation?.migration
       const deferred = legacy.some((path) => !migration?.sources.includes(path))
-      const settings = !deferred && await optionalJSON(join(directory, "runtime.json"))
-      const profile = settings && await optionalJSON(join(root, settings.profile))
-      const next = JSON.stringify([settings, profile, migration, deferred])
+      const settings = !deferred && current.settings
+      const profile = settings && current.profile
+      const next = JSON.stringify([settings, profile, migration, deferred, provenance(current)])
       if (next === signature) return false
       if (closed) return false
+      configuration = current
       const revision = createHash("sha256").update(next).digest("hex")
       state = settings && profile ? {
-        root, profile, runtimeLabel: launcher.map(quote).join(" "),
-        replacedServers: migration?.servers,
+        root, profile, configuration: provenance(current), runtimeLabel: launcher.map(quote).join(" "),
+        replacedServers: current.scope === "repository" && !legacy.length ? [] : migration?.servers,
         command: (task, corpus) => [...launcher, task, "--root", root,
           "--configuration-revision", revision, "--corpus", corpus],
       } : undefined
+      const legacyHooks = Boolean(migration?.legacy_hooks && (current.scope !== "repository" || legacy.length))
       if (deferred) {
         await dispose?.()
         dispose = undefined
-      } else if (!dispose || hookMode !== Boolean(migration?.legacy_hooks)) {
+      } else if (!dispose || hookMode !== legacyHooks) {
         await dispose?.()
-        hookMode = Boolean(migration?.legacy_hooks)
+        hookMode = legacyHooks
         dispose = await registerSearch(ctx, {
           getState: () => state,
           skillPath: join(home, "../payload/.claude/skills/repo-knowledge-search/SKILL.md"),

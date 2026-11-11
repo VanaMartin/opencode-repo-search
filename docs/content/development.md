@@ -44,6 +44,7 @@ and running corpus edits:
 
 ```sh
 python3.12 tests/smoke_opencode.py --migration --corpora
+python3.12 tests/smoke_opencode.py --worktrees
 python3.12 tests/smoke_opencode.py \
   --git-package 'github:VanaMartin/opencode-repo-search#REVISION'
 ```

@@ -76,7 +76,19 @@ Publish through your usual Git workflow, then run:
 
 ## Manual policy
 
-Read the `profile` field in `.opencode/search-package/runtime.json`. The default
+For repository-private scope, the editable profile is the `profile` object in
+`repo-search/package.json` inside the Git common directory. Corpus commands resolve
+and atomically edit that inherited document from any linked worktree. They do not
+edit preserved files from a scope adoption. A worktree-private override wins over
+the repository document; inspection reports the selected configuration source.
+
+If scope adoption retained an **upstream** policy, apply also writes the reviewed
+policy to its original logical path in the current worktree, so it can actually
+be published through Git. The preview warns about this extra target. Conflicting
+local policy edits are rejected, nothing is staged/committed, and sync waits for
+publication. Scope adoption itself never modifies that tracked policy.
+
+For worktree scope, read the `profile` field in `.opencode/search-package/runtime.json`. The default
 is `.opencode/search-package/profiles.json`; migrated integrations keep their
 original path. Add an object under `corpora`, for example:
 

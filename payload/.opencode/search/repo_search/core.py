@@ -686,6 +686,7 @@ def main() -> None:
         command.add_argument("--table", help="Logical corpus name; defaults to upstream identity")
         command.add_argument("--profile", default=PROFILE, help="Repository-relative policy path")
         command.add_argument("--policy-source", choices=["upstream", "local"], default="upstream")
+        command.add_argument("--policy-hash", help="Immutable local policy snapshot")
         if name == "query":
             command.add_argument("text")
             command.add_argument("--mode", choices=["vector", "fts", "hybrid"], default="hybrid")
@@ -701,6 +702,7 @@ def main() -> None:
         corpus=args.corpus,
         branch=args.branch,
         policy_source=args.policy_source,
+        policy_hash=args.policy_hash,
     )
     db_path = database_path(source, args.db)
     table = args.table or source.table

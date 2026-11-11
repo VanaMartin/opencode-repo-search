@@ -75,6 +75,7 @@ reuse. Model changes require new logical identities and reembedding.
 | State | Location |
 | --- | --- |
 | Native settings | `.opencode/search-package/` |
+| Opt-in repository-private settings | Git common metadata: `repo-search/package.json` |
 | Prepared Python environments | `$XDG_CACHE_HOME/repo-search/runtimes/` (default `~/.cache/repo-search/runtimes/`) |
 | Default databases | `$XDG_DATA_HOME/repo-search/<identity>/lancedb` (default `~/.local/share/repo-search/`) |
 | Daemon socket, locks and log | `~/.cache/repo-search/<database-path-hash>/` |
@@ -85,6 +86,14 @@ plus the private-policy hash when applicable. Private and shared policy are
 separate identities. An explicit database override changes the location, not the
 ownership checks. Read the [storage reference](operations.md#storage-daemon-and-worktrees)
 before sharing databases across worktrees or projects.
+
+Configuration scope is independent of index identity. Repository-private settings
+are inherited through the Git common directory; the profile's logical path and
+private-policy hash remain the identity inputs. The active worktree supplies
+current source/delta resolution, not unpublished indexed content. OpenCode owns
+location-scoped MCP lifecycles, so moving one session does not disconnect another
+session's original location. Missing worktrees lose their daemon leases; remaining
+valid mounts can continue refreshing. No automatic worktree/index cleanup runs.
 
 ## Evidence boundaries
 

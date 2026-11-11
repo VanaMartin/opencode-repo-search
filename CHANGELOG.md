@@ -7,6 +7,9 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Unreleased
 
+- Opt-in repository-private configuration shared through Git common metadata,
+  explicit scope adoption, worktree-local overrides and configuration provenance;
+  native MCP discovery follows OpenCode locations without retargeting other sessions.
 - Searchable GitHub Pages documentation, a focused quick-start README and live
   per-job CI badges, with a separate locked docs build and main-only deployment.
 - Natural-language `/search-corpus-add` and `/search-corpus-update`, backed by
