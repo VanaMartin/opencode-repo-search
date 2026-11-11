@@ -176,14 +176,61 @@ Inspect current source and local Git deltas before editing.
 
 ## Upgrade
 
-Install the desired new tag/commit and restart OpenCode locations using the old
-version. Settings and published indexes remain in place. A new package/runtime
-fingerprint gets a separate prepared Python environment.
+Use OpenCode's native package manager. Run `opencode plugin list` in the project
+and use the exact configured target; for a `main` installation:
 
-If a previous daemon is incompatible, disconnect its MCPs across worktrees and
-run `service stop` with the previous package launcher before reconnecting. Reuse
-of compatible embeddings is checked during reconciliation. Do not delete databases
-or runtime caches just to upgrade.
+```sh
+opencode plugin check 'github:VanaMartin/opencode-repo-search#main'
+opencode plugin update 'github:VanaMartin/opencode-repo-search#main'
+```
+
+Do not omit the target unless you intend to check/update every package plugin.
+Updating a configured tag does not select a newer release tag. Exact npm versions
+and full Git commit hashes remain pinned. To change releases, replace the existing
+target in its owning `opencode.json(c)` rather than adding a duplicate entry.
+Local-directory installations must be updated outside the package updater and
+restarted/reloaded. See [OpenCode plugin management](https://opencode.ai/v2/docs/plugins#manage).
+
+Before changing the package/runtime, record the old launcher/database with
+`/search-status`, disconnect affected MCPs across **all loaded locations/worktrees
+sharing each database**, then run `service stop --root WORKTREE` with the old
+package launcher. Update, restart/reload affected locations, reconnect, and check
+`/search-status` for readiness, currency and errors. Keep outdated clients
+disconnected until upgraded so they cannot restart an incompatible daemon.
+
+Settings and published indexes remain in place; do not repeat initialization or
+delete databases/runtime caches. A new package/runtime fingerprint gets a separate
+prepared Python environment. Compatible embeddings are reused during reconciliation.
+
+### Update notices and opt-out
+
+On current `main` (newer than rc.1), `/search-sync` guides the agent through one
+targeted native update check before syncing the selected corpora. It honors normal
+shell/network permissions; denial, missing CLI, offline access or check failure
+does not prevent sync. Pinning is respected, not interpreted as proof that no
+newer release exists.
+
+At startup/the next model response, cached OpenCode `outdated` metadata can produce
+an advisory notice, once per session/installed revision while the plugin is loaded.
+The plugin adds no startup network request and never installs updates, changes
+targets, restarts daemons or deletes caches/indexes automatically.
+
+To disable both the extra sync check and cached notices, replace the existing
+entry with object form, preserving its target and unrelated configuration:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [{
+    "package": "github:VanaMartin/opencode-repo-search#main",
+    "options": { "checkUpdates": false }
+  }]
+}
+```
+
+Reload the location after changing options. OpenCode's own native background
+checks are independent of this option. Portable/copied installations alone have
+no native-package update reporting.
 
 ## Adopt a portable installation
 
