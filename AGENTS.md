@@ -12,7 +12,8 @@ This is the standalone `opencode-repo-search` project. Read `README.md` and
 
 - `install.py`: dependency-free repository installer and configuration merge.
 - `plugin/` and `package.json`: native ESM entrypoint, lazy cached bootstrap and
-  package-owned project initialization.
+  package-owned project initialization. `plugin/configuration.{py,js}` resolve
+  worktree and opt-in repository-private settings consistently.
 - `payload/.opencode/search/repo_search/`: Git snapshots, parsing, indexing,
   querying, shared daemon and MCP proxy.
 - `payload/.opencode/search/pyproject.toml` and `uv.lock`: isolated Python runtime.
@@ -43,6 +44,9 @@ in `README.md`; stable and npm publication follow candidate acceptance.
   A failed refresh retains the last complete snapshot and reports its currency.
 - Share one compatible daemon/model cache per resolved database across connections
   and worktrees; isolate independent projects by default.
+- Private configuration scope changes require explicit adoption. Repository-scoped
+  configuration lives in Git common metadata; location-scoped MCPs must not be
+  retargeted globally when one session moves.
 - Keep the runtime independent of the target project's Python environment and
   application packages. Preserve the BSD license and copyright notices.
 - Check current OpenCode V2 documentation before changing plugin APIs or config.

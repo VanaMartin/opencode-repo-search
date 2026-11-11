@@ -82,6 +82,54 @@ Managed paths are added to **`.git/info/exclude`**, not the shared `.gitignore`.
 The policy stays private and is pinned by hash. Existing tracked settings and
 guidance are preserved; Git cannot ignore files that are already tracked.
 
+### Private settings across worktrees
+
+On current `main` (newer than rc.1), opt into repository-private scope:
+
+```text
+/search-init git-ignore --scope repository --dry-run
+/search-init git-ignore --scope repository
+```
+
+The complete private settings/profile document lives at
+`repo-search/package.json` inside the resolved Git common directory. Linked
+worktrees discover it without copying configuration or initializing again.
+Concurrent edits are locked and the complete configuration publishes atomically.
+No tracked files, shared excludes, branches or indexes are deleted or changed.
+
+For existing native setup, explicitly adopt it:
+
+```text
+/search-init git-ignore --scope repository --adopt --dry-run
+/search-init git-ignore --scope repository --adopt
+```
+
+This preserves the policy's logical path/content/source and existing index
+identity. Original local files remain; unchanged adopted files defer to the
+repository settings. Editing preserved private files makes a local override;
+tracked configuration keeps its lower precedence. Portable
+installations first use `/search-migrate`, then separately adopt repository scope.
+Existing installations never change scope automatically.
+
+Precedence is explicit CLI arguments, worktree-private configuration,
+repository-private configuration, then tracked package configuration. Whole
+configurations are selected rather than merged. To create an independent local
+override, use `/search-init git-ignore --scope worktree`, then edit that worktree's
+policy. A different private policy selects a different index identity.
+
+Install the native plugin globally (or load it in every destination's config).
+OpenCode loads the destination location's plugin/MCP definitions on session moves.
+The plugin discovers that location's Git common directory and reconnects the
+appropriate search proxies. Original connections can remain while other sessions
+use them; location cleanup releases their leases. An unrelated repository with
+no configuration reports **not configured**, never the original project's index.
+
+`/search-status` distinguishes configuration provenance, MCP connectivity and
+index readiness/freshness. Direct launcher `configuration --root WORKTREE` is a
+dependency-free inspection; CLI `status` cannot itself verify OpenCode's transport
+and reports it as `not_checked`. Configuration inheritance never changes the
+committed-upstream source branch or indexes dirty/feature-branch files.
+
 ### Shared settings: git-commit
 
 ```text

@@ -21,6 +21,7 @@ paths and symbol/heading anchors against your current checkout.
 
 **[Documentation](https://vanamartin.github.io/opencode-repo-search/)** ·
 [Quick start](#quick-start) · [Commands](#commands) ·
+[Worktrees](#using-linked-worktrees) ·
 [Corpus management](#add-or-broaden-a-corpus) · [Changelog](CHANGELOG.md)
 
 ![Magnifying glass on books beside blank paper cards](assets/readme-hero.webp)
@@ -36,8 +37,8 @@ paths and symbol/heading anchors against your current checkout.
 - **Local, isolated runtime:** locked Python 3.12 dependencies stay out of your
   application's environment. Compatible connections/worktrees share a daemon and
   CPU MiniLM model per resolved database.
-- **Explicit Git actions:** private setup uses local excludes; shared setup creates
-  a focused commit only when requested. Nothing pushes automatically.
+- **Explicit Git actions:** private setup uses local excludes or Git common metadata;
+  shared setup creates a focused commit only when requested. Nothing pushes automatically.
 
 ## Quick start
 
@@ -54,9 +55,10 @@ opencode plugin add 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.1'
 ```
 
 > **Release versus `main`:** the published candidate is `0.1.0-rc.1`; npm registry
-> publication is pending. These docs track `main`. Corpus add/update commands and
-> the improved initialization checklist were added **after** that tag. To try the
-> latest merged features, install `github:VanaMartin/opencode-repo-search#main`
+> publication is pending. These docs track `main`. Corpus add/update commands,
+> repository-private worktree scope and the initialization checklist were added
+> **after** that tag. To try the latest merged features, install
+> `github:VanaMartin/opencode-repo-search#main`
 > instead, or pin a reviewed commit. Restart OpenCode locations after upgrading.
 
 ### 2. Initialize a repository
@@ -70,9 +72,13 @@ Open a Git repository in OpenCode and choose a visibility mode:
 
 | Choice | What changes |
 | --- | --- |
-| `git-ignore` | Small project settings under `.opencode/search-package/`; local `.git/info/exclude` entries. Shared `.gitignore` stays untouched. |
+| `git-ignore` | Worktree-local settings under `.opencode/search-package/`; local Git excludes. Shared `.gitignore` stays untouched. |
+| `git-ignore --scope repository` | Opt-in private settings in Git common metadata, inherited by linked worktrees. **Newer than rc.1.** |
 | `git-commit` | An explicitly requested, scoped local settings commit. Publish it to the configured upstream branch before indexing. |
 | No action / `--dry-run` | Inspect choices or preview the action; no provisioning, staging or commit. |
+
+For linked worktrees, choose repository-private scope on a fresh setup. Existing
+settings require explicit adoption; see [Using linked worktrees](#using-linked-worktrees).
 
 Only `repository` starts enabled. Setup does not copy the Python runtime into your
 project or install your application's packages. Installing the plugin globally
@@ -103,8 +109,8 @@ source part of the index.
 
 | Command | Purpose |
 | --- | --- |
-| `/search-init` | Inspect setup; choose `git-ignore` or explicitly request `git-commit`. |
-| `/search-status [--corpus NAME]` | Inspect readiness, policy provenance, source commit and freshness. |
+| `/search-init` | Inspect setup; choose private visibility/scope or explicitly request `git-commit`. |
+| `/search-status [--corpus NAME]` | Inspect configuration provenance, MCP connection, index readiness and freshness separately. |
 | `/search-sync [--corpus NAME]` | Reconcile committed upstream content and publish a complete index. |
 | `/search-migrate` | Preview/adopt a portable installation without changing compatible index identities. |
 | `/search-corpus-add DESCRIPTION` | Infer and review a new corpus from actual source samples. **Newer than rc.1.** |
@@ -114,6 +120,84 @@ source part of the index.
 For status/sync without a corpus selection, the command guides the agent through
 each enabled corpus. The context hook and commands supply the exact package
 launcher path for direct CLI use.
+
+## Using linked worktrees
+
+Use an updated native plugin, **newer than rc.1**, loaded globally or through
+configuration available in every destination. Restart existing OpenCode locations
+after upgrading. A private copied loader in one checkout is not inherited by
+another worktree.
+
+### Fresh repository-private setup
+
+Run once in any linked worktree:
+
+```text
+/search-init git-ignore --scope repository --dry-run
+/search-init git-ignore --scope repository
+```
+
+The complete settings/profile document lives at `repo-search/package.json` inside
+the resolved Git common directory. Other linked worktrees discover it without
+copying files or repeating initialization. Nothing is staged, committed or pushed.
+
+### Adopt existing settings
+
+For an existing native setup, preview and explicitly adopt its scope:
+
+```text
+/search-init git-ignore --scope repository --adopt --dry-run
+/search-init git-ignore --scope repository --adopt
+```
+
+Adoption preserves policy content/source, its logical path, upstream settings and
+compatible index identities. Original files remain intact. Do not combine adoption
+with `--remote`, `--branch`, `--db` or `--corpora`; change those separately afterwards.
+For a copied/portable installation, first preview and apply native migration:
+
+```text
+/search-migrate git-ignore --dry-run
+/search-migrate git-ignore
+```
+
+Then run the scope-adoption commands above. Existing installations never change
+scope silently.
+
+### Move, check, or override
+
+After moving a session to another linked worktree, check:
+
+```text
+/mcps
+/search-status
+```
+
+The destination location registers its own proxies against the shared index.
+Status distinguishes the current worktree, configuration source/inheritance,
+explicit CLI overrides, MCP connectivity, index readiness/integrity, published
+upstream commit, currency and refresh errors. A move alone does not require
+reindexing; request `/search-sync` if a refresh is needed. An unrelated repository
+without setup reports **not configured**, rather than reusing the previous project.
+Other sessions' original connections remain available until their location unloads.
+
+To deliberately create a local override, run in the selected worktree:
+
+```text
+/search-init git-ignore --scope worktree
+```
+
+Review its `.opencode/search-package/profiles.json` before changing policy. Selection
+is **explicit CLI arguments → worktree-private configuration → repository-private
+configuration → tracked configuration**. Whole configurations are selected, not
+merged field by field. Different private policies get distinct index identities.
+Editing preserved private adoption-source files also creates a local override; use corpus
+commands from an inheriting worktree to edit repository-private policy instead.
+
+The indexed source remains the configured committed upstream branch—not the
+checked-out feature branch or dirty files. Worktree removal never deletes shared
+configuration or indexes automatically. See the
+[full worktree guide](https://vanamartin.github.io/opencode-repo-search/getting-started/#private-settings-across-worktrees)
+and [troubleshooting](https://vanamartin.github.io/opencode-repo-search/troubleshooting/#search-disappears-after-moving-to-a-worktree).
 
 ## Add or broaden a corpus
 
@@ -130,6 +214,10 @@ files, note errors, overlap and rebuild costs. Confirm it to apply, or explicitl
 request `--apply`. Lists are appended by default; replacing paths or modifying
 another corpus's exclusions requires explicit approval. `--sync` requests
 reconciliation; shared-policy sync waits for publication.
+
+Commands edit the effective policy for the current worktree. Inherited
+repository-private edits affect linked worktrees using that configuration; a
+worktree-local override stays separate.
 
 **Private-policy caveat:** changing the profile changes its hash and can rebuild
 **all enabled corpora**, not just the edited one. Old indexes are retained.

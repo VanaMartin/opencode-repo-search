@@ -74,6 +74,75 @@ Setup is serialized and publishes an atomic ready pointer only after success;
 interrupted/failed setup is retried. Progress uses stderr, leaving MCP stdout clean.
 The embedding model is loaded by the shared daemon, not by plugin setup.
 
+### Private settings across worktrees
+
+On current `main` (newer than rc.1), opt in with:
+
+```text
+/search-init git-ignore --scope repository --dry-run
+/search-init git-ignore --scope repository
+```
+
+One private JSON document under the resolved Git common directory,
+`repo-search/package.json`, holds settings, policy and ownership metadata. A
+repository lock serializes edits; one atomic replace publishes the complete
+configuration. Nothing is copied into linked worktrees, staged, committed or
+pushed. The editable profile is the document's `profile` object; use corpus
+commands for reviewed edits rather than changing preserved adoption-source files.
+
+Existing native setup requires explicit adoption:
+
+```text
+/search-init git-ignore --scope repository --adopt --dry-run
+/search-init git-ignore --scope repository --adopt
+```
+
+Adoption preserves the logical profile path, policy content/source, upstream and
+database selection, keeping compatible index identities. It retains the original
+worktree files and records their exact hashes. Unchanged adopted files defer to
+repository-private configuration; subsequent edits to private source files become
+a worktree override. Tracked configuration retains its lower precedence.
+Conflicting repository-private settings must be reconciled before adoption.
+Portable installations first use `/search-migrate`; combining installer migration
+and scope adoption is deliberately rejected. `git-commit` is not a repository-private
+scope action.
+Identity-changing overrides (`--remote`, `--branch`, `--db`, `--corpora`) are rejected
+during adoption; make those deliberate changes separately afterwards.
+If the adopted policy source is upstream, corpus-apply previews also name the
+publishable policy path in the current worktree. Apply updates that file and the
+private configuration, refuses conflicting local policy edits, and defers sync
+until publication. This is an explicitly reviewed corpus edit, not an implicit
+tracked-file change during scope adoption.
+
+Configuration selection is: explicit CLI arguments, then a worktree-private
+configuration, then repository-private configuration, then tracked package
+configuration in the current checkout. Configurations are selected whole, not
+merged field by field; CLI flags override the selected defaults. Tracked settings
+can have local edits, but source and upstream policy still follow the committed
+indexing contract. `/search-init git-ignore --scope worktree` explicitly creates a
+local override, initially retaining inherited settings/policy when no local files
+exist. Old installations keep their worktree scope until explicitly adopted.
+
+The native plugin must load in each destination location: install it globally or
+through configuration present there. A private copied loader in another checkout
+cannot bootstrap itself in an unrelated worktree. OpenCode V2 activates the
+destination location's plugin/MCP configuration when moving a session. Each
+location resolves its own Git common directory and registers its own proxies;
+moving one session never retargets another location's MCPs. Original connections
+may remain for other sessions until OpenCode unloads that location; plugin/MCP
+cleanup then releases those leases. Missing destination configuration is reported
+instead of borrowing the original project's search.
+
+The dependency-free launcher `configuration --root WORKTREE` reports the selected
+source, scope, physical path, Git common directory, inherited flag and logical
+policy/settings. CLI `status` adds configuration provenance and marks MCP transport
+state `not_checked`; `/search-status` supplies a separate OpenCode MCP connection
+snapshot. Report worktree/configuration, MCP connectivity, index readiness/integrity,
+published source ref/commit, currency, refresh phase and refresh errors separately.
+Neither inherited settings nor connected transport prove that an index is ready.
+Status provenance also lists explicit CLI `overrides`, so selected defaults cannot
+be mistaken for the effective branch/database/profile when flags are supplied.
+
 ### Native corpus management
 
 `/search-corpus-add` and `/search-corpus-update` accept natural-language requests,
@@ -139,7 +208,7 @@ OpenCode watcher can mount newly enabled MCPs and initiate indexing automaticall
 Enabled corpora selecting no files or malformed literature notes in the inspected
 commit cannot be applied; add an empty corpus disabled until its source is ready.
 
-The package watches project settings/policy every two seconds. Valid edits reload
+The package watches effective settings/policy every two seconds. Valid edits reload
 MCP definitions, including policy revisions, so local-policy proxies reconnect and
 pin the new hash. Invalid JSON retains the previous in-memory registration and
 reports a reload error. Restart OpenCode after upgrading a configured local package.

@@ -130,6 +130,7 @@ def main() -> None:
     parser.add_argument("--table")
     parser.add_argument("--profile", default=PROFILE)
     parser.add_argument("--policy-source", choices=["upstream", "local"], default="upstream")
+    parser.add_argument("--policy-hash")
     parser.add_argument("--check-interval", type=float, default=CHECK_INTERVAL)
     args = parser.parse_args()
     source = MainSource.discover(
@@ -139,6 +140,7 @@ def main() -> None:
         corpus=args.corpus,
         branch=args.branch,
         policy_source=args.policy_source,
+        policy_hash=args.policy_hash,
     )
     table = args.table or source.table
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):

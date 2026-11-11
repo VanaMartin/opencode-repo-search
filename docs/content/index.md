@@ -41,7 +41,8 @@ connections and worktrees share a daemon/model per resolved database.
 
 !!! note "These docs track main"
     The published candidate is **0.1.0-rc.1**. Corpus add/update commands and improved
-    initialization guidance are newer than that immutable tag. Install `main` or a
+    initialization guidance and repository-private worktree scope are newer than
+    that immutable tag. Install `main` or a
     reviewed commit to try those features; npm registry publication is pending.
 
 ## The search contract

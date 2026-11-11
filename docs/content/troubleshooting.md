@@ -22,6 +22,21 @@ your local branch, staging area or working tree. Private policy does not change
 that committed-source contract. Inspect includes, exclusions, extensions and the
 reported source commit. Symlinks/submodule contents are not indexed.
 
+## Search disappears after moving to a worktree
+
+An existing private installation is worktree-local; its index may still exist
+even though the new location has no configuration/MCP registration. On current
+`main`, explicitly adopt native settings with
+`/search-init git-ignore --scope repository --adopt`. Preview with `--dry-run`
+first. New setups use `--scope repository` without adoption. Install the native
+plugin globally so it can load at destination locations; a copied private loader
+in another checkout is not inherited. Portable installs first use `/search-migrate`.
+
+Inspect configuration source/scope/path, MCP status, then index readiness and
+refresh errors separately. A local override can shadow inherited settings. An
+unrelated destination without setup should report **not configured**. Returning
+to the original worktree alone does not repair the destination's missing setup.
+
 ## Shared profile is absent
 
 Publish the profile/settings commit to the configured upstream branch using the

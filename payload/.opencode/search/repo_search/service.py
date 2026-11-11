@@ -273,7 +273,7 @@ class SearchService:
             now = time.monotonic()
             for table, corpus in list(self.corpora.items()):
                 for client_id, mount in list(corpus.mounts.items()):
-                    if mount["expires"] <= now:
+                    if mount["expires"] <= now or not mount["source"].root.is_dir():
                         del corpus.mounts[client_id]
                         corpus.wake.set()
                 if not corpus.mounts and corpus.task.done():
@@ -312,6 +312,7 @@ def main() -> None:
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--profile", default=PROFILE)
     parser.add_argument("--policy-source", choices=["upstream", "local"], default="upstream")
+    parser.add_argument("--policy-hash")
     parser.add_argument("--branch", default="main")
     parser.add_argument("--idle-timeout", type=float, default=IDLE_TIMEOUT)
     args = parser.parse_args()
@@ -324,6 +325,7 @@ def main() -> None:
             args.profile,
             branch=args.branch,
             policy_source=args.policy_source,
+            policy_hash=args.policy_hash,
         )
         db_path = database_path(source)
     if args.command != "serve":

@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from configuration import local_binding, provenance, repository_lock, resolve
+from configuration import publish as publish_configuration
 from migration import jsonc, local_path
 from project import DIRECTORY, PACKAGE, settings
 from repo_search.installation import encoded, git, write
@@ -103,7 +105,52 @@ def check_servers(root, old, candidate):
             raise ValueError(f"New MCP name conflicts with an existing server in {name}")
 
 
-def publish(root, path, raw, config_raw, candidate, revision):
+def publish(root, path, raw, config_raw, candidate, revision, configuration=None):
+    if configuration and configuration["scope"] == "repository":
+        with repository_lock(Path(configuration["common_dir"])):
+            current = resolve(root)
+            if current["source"] != "repository-private" or current["path"] != str(path):
+                raise ValueError("Configuration selection changed since preview; inspect again")
+            document_raw = path.read_bytes()
+            document = json.loads(document_raw)
+            if document_raw != config_raw or encoded(document["profile"]) != raw:
+                raise ValueError("Policy/settings changed since preview; inspect and preview again")
+            policy_file = None
+            original_policy = None
+            if document["settings"].get("policy_source") == "upstream":
+                # Private configuration can adopt a shared policy without changing
+                # its identity. Its reviewed edits must still be publishable in Git.
+                policy_file = local_path(root, document["settings"]["profile"])
+                if policy_file.is_symlink():
+                    raise ValueError("Managed policy must not be a symlink")
+                original_policy = policy_file.read_bytes() if policy_file.exists() else None
+                if (
+                    original_policy is not None
+                    and json.loads(original_policy) != document["profile"]
+                ):
+                    raise ValueError(
+                        "Upstream policy file differs from inherited policy; "
+                        "reconcile it before editing"
+                    )
+            document["profile"] = candidate
+            profile_name = document["settings"]["profile"]
+            owned = document.get("installation", {}).get("files", {})
+            if profile_name in owned:
+                owned[profile_name] = digest(encoded(candidate))
+            try:
+                if policy_file:
+                    write(policy_file, encoded(candidate))
+                    if str(root) in document.get("adoptions", {}):
+                        document["adoptions"][str(root)] = local_binding(root, document["settings"])
+                publish_configuration(path, document)
+            except OSError:
+                if policy_file:
+                    if original_policy is None:
+                        policy_file.unlink(missing_ok=True)
+                    else:
+                        write(policy_file, original_policy)
+                raise
+        return
     common = Path(git(root, "rev-parse", "--git-common-dir").stdout.strip())
     lock = (
         (root / common).resolve()
@@ -113,6 +160,13 @@ def publish(root, path, raw, config_raw, candidate, revision):
     lock.parent.mkdir(parents=True, exist_ok=True)
     with lock.open("a") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)
+        if configuration:
+            selected = resolve(root)
+            if (selected["source"], selected["path"]) != (
+                configuration["source"],
+                configuration["path"],
+            ):
+                raise ValueError("Configuration selection changed since preview; inspect again")
         current_config = local_path(root, str(DIRECTORY / "runtime.json")).read_bytes()
         if digest(current_config + b"\0" + path.read_bytes()) != revision:
             raise ValueError("Policy/settings changed since preview; inspect and preview again")
@@ -194,12 +248,17 @@ def manage(arguments):
     )
     args = parser.parse_args(arguments)
     root, config = settings(args.root)
-    config_raw = local_path(root, str(DIRECTORY / "runtime.json")).read_bytes()
-    config = json.loads(config_raw)
-    path = local_path(root, config["profile"])
+    configuration = resolve(root)
+    repository_scope = configuration["scope"] == "repository"
+    config_raw = (
+        Path(configuration["path"]).read_bytes()
+        if repository_scope
+        else local_path(root, str(DIRECTORY / "runtime.json")).read_bytes()
+    )
+    path = Path(configuration["path"]) if repository_scope else local_path(root, config["profile"])
     if path.is_symlink():
         raise ValueError("Managed policy must not be a symlink")
-    raw = path.read_bytes()
+    raw = encoded(configuration["profile"]) if repository_scope else path.read_bytes()
     profile = json.loads(raw)
     validate_profile(profile)
     base_revision = digest(config_raw + b"\0" + raw)
@@ -219,6 +278,7 @@ def manage(arguments):
             "settings": config,
             "revision": base_revision,
             "inspection": inspect_repository(root, profile, config),
+            "configuration": provenance(configuration),
         }
     if not args.name or args.spec is None:
         raise ValueError("Supply a corpus name and --spec JSON_FILE (or --spec -)")
@@ -272,6 +332,12 @@ def manage(arguments):
             "Enabled corpora overlap; review ownership. --exclude-from changes another "
             "corpus only when explicitly supplied."
         )
+    if repository_scope and not private:
+        warnings.append(
+            f"This configuration retains upstream policy: apply also writes {config['profile']} "
+            "in the current worktree so the reviewed policy can be published. "
+            "Sync waits for publication."
+        )
     steps = []
     if not private:
         steps.append(
@@ -289,6 +355,7 @@ def manage(arguments):
         "operation": args.operation,
         "corpus": args.name,
         "profile_path": config["profile"],
+        "configuration": provenance(configuration),
         "revision": revision,
         "base_revision": base_revision,
         "changed": changed,
@@ -319,7 +386,7 @@ def manage(arguments):
     if errors:
         raise ValueError("; ".join(errors))
     if changed:
-        publish(root, path, raw, config_raw, candidate, base_revision)
+        publish(root, path, raw, config_raw, candidate, base_revision, configuration)
     result["applied"] = True
     result["next"] = (
         "Corpus policy applied. OpenCode reloads it automatically; readiness is not yet checked."
