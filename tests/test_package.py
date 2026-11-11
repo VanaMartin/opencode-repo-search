@@ -46,6 +46,7 @@ def package(tmp_path_factory):
         "README.md",
         "index.js",
         "plugin/index.js",
+        "plugin/updates.js",
         "plugin/launch.py",
         "plugin/bootstrap.py",
         "plugin/project.py",

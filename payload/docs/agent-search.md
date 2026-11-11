@@ -74,6 +74,43 @@ Setup is serialized and publishes an atomic ready pointer only after success;
 interrupted/failed setup is retried. Progress uses stderr, leaving MCP stdout clean.
 The embedding model is loaded by the shared daemon, not by plugin setup.
 
+### Native package updates
+
+Use OpenCode's existing `opencode plugin list`, `opencode plugin check TARGET`
+and `opencode plugin update TARGET` commands. Use the exact configured target,
+never an unscoped check/update that includes unrelated plugins. Changing from a
+release tag/full commit to a new release requires an explicit edit to the existing
+entry in its owning OpenCode configuration, not an additional plugin entry.
+Checking a configured pin does not discover later release tags.
+
+On current `main` (newer than rc.1), native `/search-sync` supplies an optional
+targeted check instruction by default. Only when that instruction is present,
+run the native check once before syncing any selected corpus, in the current
+project directory and under normal shell/network permissions. Bound the optional
+shell call to 15 seconds, without retries. Honor configuration/request/session
+opt-out and denials; do not request extra access or bypass restrictions for this
+advisory check. Report update availability/current/pinned/skipped/unknown as supported by
+the actual result. Offline access, unavailable metadata/CLI, denial or check failure
+must not block requested corpus sync. Direct launcher sync, automatic daemon
+refresh and portable commands do not perform this native package check.
+
+Startup/next-response notices read only OpenCode's cached package `outdated`
+metadata. They add no network check, may appear after OpenCode's background check
+finishes, and are deduplicated per session/installed revision while the plugin is
+loaded. Native plugin option `"options": {"checkUpdates": false}` disables both
+the extra sync check and notices; it does not disable OpenCode's own background
+checker. Preserve the configured target when converting an entry to object form
+and reload the location. Missing/unsupported metadata silently skips reporting.
+
+Neither a check nor a notice authorizes an update, configuration edit, restart or
+cache/index deletion. Keep updating manual. Before a requested package/runtime
+upgrade, record the current launcher/database, disconnect affected MCPs in every
+loaded location/worktree sharing it and run the old launcher with
+`service stop --root WORKTREE`. Update the package/explicit target, restart/reload
+affected OpenCode locations, reconnect and check `/search-status` readiness,
+currency and errors. Retain project settings, published indexes and runtime caches;
+do not reinitialize projects. Compatible index identities/embeddings are reused.
+
 ### Private settings across worktrees
 
 On current `main` (newer than rc.1), opt in with:

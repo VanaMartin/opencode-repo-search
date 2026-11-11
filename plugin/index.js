@@ -8,6 +8,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { registerSearch } from "../payload/.opencode/search/registration.js"
 import { optionalJSON, provenance, resolveConfiguration } from "./configuration.js"
+import { updateReporting } from "./updates.js"
 
 const home = dirname(fileURLToPath(import.meta.url))
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'"
@@ -22,6 +23,7 @@ export default {
     }
     let root = ctx.location.directory
     let configuration
+    const updates = updateReporting(ctx)
     const launcher = ["uv", "run", "--no-project", "--isolated", "--no-config", "--python", "3.12", "python",
       join(home, "launch.py")]
     const guide = join(home, "../payload/docs/agent-search.md")
@@ -36,7 +38,7 @@ export default {
           "published upstream commit, currency and refresh error as separate fields. " +
           "If no configuration exists, report not configured and suggest /search-init; do not run sync or reuse another location's MCP. "
       }
-      return diagnostics +
+      return diagnostics + (task === "sync" ? await updates.beforeSync() : "") +
       `Read ${JSON.stringify(guide)}. Package launcher: ${launcher.map(quote).join(" ")}. ` +
       `Run ${task} --root ${quote(root)} with caller arguments: ${JSON.stringify(arguments_)}. ` +
       "No init action means report choices only. Only an explicit git-commit action " +
@@ -125,6 +127,12 @@ export default {
       return true
     }
     await refresh()
+    // Native update notices are independent of portable reminder-hook ownership.
+    // Never read plugin metadata during setup: the location may still be activating.
+    const updateHook = updates.enabled ? await ctx.session.hook("context", async (event) => {
+      const notice = await updates.notice(event)
+      if (notice) event.system.push({ type: "text", text: notice })
+    }) : undefined
     let pending = false
     const timer = setInterval(async () => {
       if (pending) return
@@ -138,6 +146,11 @@ export default {
       }
     }, 2000)
     timer.unref?.()
-    return async () => { closed = true; clearInterval(timer); await dispose?.() }
+    return async () => {
+      closed = true
+      clearInterval(timer)
+      await updateHook?.dispose()
+      await dispose?.()
+    }
   },
 }

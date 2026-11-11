@@ -7,6 +7,10 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Unreleased
 
+- Document manual native-plugin upgrades and coordinated shared-daemon handover.
+  Default-on advisory `/search-sync` checks honor permissions; startup/next-response
+  notices use cached OpenCode metadata. `checkUpdates: false` opts out of both.
+  No automatic installation, pin changes, restarts or cache/index cleanup.
 - Open generations and check logical-name collisions directly by table name,
   avoiding false missing-generation errors from LanceDB's ten-name listing page.
   Existing generations are retained; abandoned-generation cleanup remains separate.

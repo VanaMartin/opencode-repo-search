@@ -21,6 +21,7 @@ paths and symbol/heading anchors against your current checkout.
 
 **[Documentation](https://vanamartin.github.io/opencode-repo-search/)** ·
 [Quick start](#quick-start) · [Commands](#commands) ·
+[Updating](#updating-the-plugin) ·
 [Worktrees](#using-linked-worktrees) ·
 [Corpus management](#add-or-broaden-a-corpus) · [Changelog](CHANGELOG.md)
 
@@ -111,7 +112,7 @@ source part of the index.
 | --- | --- |
 | `/search-init` | Inspect setup; choose private visibility/scope or explicitly request `git-commit`. |
 | `/search-status [--corpus NAME]` | Inspect configuration provenance, MCP connection, index readiness and freshness separately. |
-| `/search-sync [--corpus NAME]` | Reconcile committed upstream content and publish a complete index. |
+| `/search-sync [--corpus NAME]` | Optionally check for a plugin update, then reconcile committed upstream content and publish a complete index. |
 | `/search-migrate` | Preview/adopt a portable installation without changing compatible index identities. |
 | `/search-corpus-add DESCRIPTION` | Infer and review a new corpus from actual source samples. **Newer than rc.1.** |
 | `/search-corpus-update DESCRIPTION` | Broaden/update a corpus and optionally re-sync. **Newer than rc.1.** |
@@ -120,6 +121,67 @@ source part of the index.
 For status/sync without a corpus selection, the command guides the agent through
 each enabled corpus. The context hook and commands supply the exact package
 launcher path for direct CLI use.
+
+## Updating the plugin
+
+Use [OpenCode's existing updater](https://opencode.ai/v2/docs/plugins#manage),
+not a separate search-plugin upgrade command. Run `opencode plugin list` in the
+project and copy the **exact configured package target**. For a `main` installation:
+
+```sh
+opencode plugin check 'github:VanaMartin/opencode-repo-search#main'
+opencode plugin update 'github:VanaMartin/opencode-repo-search#main'
+```
+
+Omitting the target checks/updates other plugins too. A configured tag such as
+`#v0.1.0-rc.1` does not advance to another release; exact npm versions/full Git
+hashes stay pinned. To select a newer tag/commit, **replace the existing target**
+in the `opencode.json(c)` that owns it. Do not add a second entry or repeat
+`/search-init` in every project. Configured local directories are updated outside
+OpenCode's package updater and need a location restart/reload.
+
+For a safe shared-runtime handover:
+
+1. Record the current package launcher/database from `/search-status`. Disconnect
+   affected search MCPs in **all loaded locations/worktrees sharing that database**,
+   then run the old launcher with `service stop --root /path/to/worktree`.
+2. Update the package or explicitly replace its configured tag/commit as above.
+3. Restart/reload affected OpenCode locations, reconnect their MCPs, then check
+   `/search-status` for `ready_for_queries: true`, source currency and refresh errors.
+
+Project settings, databases and published indexes stay in place. Compatible
+embeddings are reused; new runtime fingerprints get separate prepared environments.
+Do not delete caches or indexes to upgrade, or reconnect outdated clients to a new
+incompatible daemon.
+
+### Advisory update reporting
+
+On current `main` (**newer than rc.1**), reporting is enabled by default:
+
+- `/search-sync` guides the agent to run **one targeted `opencode plugin check`**
+  before syncing the selected corpora, under normal shell/network permissions.
+  Denied, offline, unavailable or failed checks do not block search sync.
+- At session startup/the next model response, the plugin surfaces an update when
+  OpenCode's **cached** metadata reports one, once per session/installed revision
+  while the plugin is loaded. There is no additional startup network request.
+  It does not discover newer releases beyond a configured pin.
+
+These are notices only: no automatic package installation, revision changes,
+daemon restart or cache/index cleanup. To opt out, change your **existing** plugin
+entry to object form, keeping its current target:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [{
+    "package": "github:VanaMartin/opencode-repo-search#main",
+    "options": { "checkUpdates": false }
+  }]
+}
+```
+
+Reload the affected location after changing options. This disables repo-search's
+extra sync check and notices, not OpenCode's own background update checking.
 
 ## Using linked worktrees
 
