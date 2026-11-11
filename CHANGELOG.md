@@ -7,6 +7,11 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Unreleased
 
+## 0.1.0-rc.2
+
+Second GitHub release candidate for OpenCode V2 >=2.0.15, <3 on macOS/Linux.
+Install the immutable `v0.1.0-rc.2` GitHub tag; npm registry publication is separate.
+
 - Document manual native-plugin upgrades and coordinated shared-daemon handover.
   Default-on advisory `/search-sync` checks honor permissions; startup/next-response
   notices use cached OpenCode metadata. `checkUpdates: false` opts out of both.

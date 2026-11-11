@@ -25,8 +25,8 @@ reported source commit. Symlinks/submodule contents are not indexed.
 ## Search disappears after moving to a worktree
 
 An existing private installation is worktree-local; its index may still exist
-even though the new location has no configuration/MCP registration. On current
-`main`, explicitly adopt native settings with
+even though the new location has no configuration/MCP registration. With
+`0.1.0-rc.2` or newer, explicitly adopt native settings with
 `/search-init git-ignore --scope repository --adopt`. Preview with `--dry-run`
 first. New setups use `--scope repository` without adoption. Install the native
 plugin globally so it can load at destination locations; a copied private loader
@@ -85,8 +85,9 @@ a first troubleshooting step.
 ## Commands are missing after upgrade
 
 The immutable rc.1 tag predates `/search-corpus-add`, `/search-corpus-update` and
-the improved initialization checklist. Install current `main` or a reviewed
-commit and restart OpenCode locations. Choose one plugin-loading method.
+the improved initialization checklist. Replace the existing configured target with
+`github:VanaMartin/opencode-repo-search#v0.1.0-rc.2` or a newer reviewed revision,
+then restart OpenCode locations. Choose one plugin-loading method.
 
 Copied installations still own their registrations until `/search-migrate` adopts
 them. The native corpus helper requires initialized/adopted package settings.

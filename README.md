@@ -52,15 +52,15 @@ access for the locked dependencies/model and access to the configured Git upstre
 Install the published release candidate:
 
 ```sh
-opencode plugin add 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.1'
+opencode plugin add 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.2'
 ```
 
-> **Release versus `main`:** the published candidate is `0.1.0-rc.1`; npm registry
-> publication is pending. These docs track `main`. Corpus add/update commands,
-> repository-private worktree scope and the initialization checklist were added
-> **after** that tag. To try the latest merged features, install
-> `github:VanaMartin/opencode-repo-search#main`
-> instead, or pin a reviewed commit. Restart OpenCode locations after upgrading.
+> **Release versus `main`:** the published candidate is `0.1.0-rc.2`, including
+> corpus management, repository-private worktree settings and advisory update
+> reporting. GitHub-tag installation works without npm registry publication, which
+> remains separate. These docs track `main`; use
+> `github:VanaMartin/opencode-repo-search#main` only to follow development, or pin
+> a reviewed commit. Restart OpenCode locations after upgrading.
 
 ### 2. Initialize a repository
 
@@ -74,7 +74,7 @@ Open a Git repository in OpenCode and choose a visibility mode:
 | Choice | What changes |
 | --- | --- |
 | `git-ignore` | Worktree-local settings under `.opencode/search-package/`; local Git excludes. Shared `.gitignore` stays untouched. |
-| `git-ignore --scope repository` | Opt-in private settings in Git common metadata, inherited by linked worktrees. **Newer than rc.1.** |
+| `git-ignore --scope repository` | Opt-in private settings in Git common metadata, inherited by linked worktrees. |
 | `git-commit` | An explicitly requested, scoped local settings commit. Publish it to the configured upstream branch before indexing. |
 | No action / `--dry-run` | Inspect choices or preview the action; no provisioning, staging or commit. |
 
@@ -114,8 +114,8 @@ source part of the index.
 | `/search-status [--corpus NAME]` | Inspect configuration provenance, MCP connection, index readiness and freshness separately. |
 | `/search-sync [--corpus NAME]` | Optionally check for a plugin update, then reconcile committed upstream content and publish a complete index. |
 | `/search-migrate` | Preview/adopt a portable installation without changing compatible index identities. |
-| `/search-corpus-add DESCRIPTION` | Infer and review a new corpus from actual source samples. **Newer than rc.1.** |
-| `/search-corpus-update DESCRIPTION` | Broaden/update a corpus and optionally re-sync. **Newer than rc.1.** |
+| `/search-corpus-add DESCRIPTION` | Infer and review a new corpus from actual source samples. |
+| `/search-corpus-update DESCRIPTION` | Broaden/update a corpus and optionally re-sync. |
 | `/mcps` | OpenCode's built-in MCP connection interface. |
 
 For status/sync without a corpus selection, the command guides the agent through
@@ -136,7 +136,8 @@ opencode plugin update 'github:VanaMartin/opencode-repo-search#main'
 Omitting the target checks/updates other plugins too. A configured tag such as
 `#v0.1.0-rc.1` does not advance to another release; exact npm versions/full Git
 hashes stay pinned. To select a newer tag/commit, **replace the existing target**
-in the `opencode.json(c)` that owns it. Do not add a second entry or repeat
+in the `opencode.json(c)` that owns it, for example changing `#v0.1.0-rc.1` to
+`#v0.1.0-rc.2`. Do not add a second entry or repeat
 `/search-init` in every project. Configured local directories are updated outside
 OpenCode's package updater and need a location restart/reload.
 
@@ -156,7 +157,7 @@ incompatible daemon.
 
 ### Advisory update reporting
 
-On current `main` (**newer than rc.1**), reporting is enabled by default:
+Since `0.1.0-rc.2`, reporting is enabled by default:
 
 - `/search-sync` guides the agent to run **one targeted `opencode plugin check`**
   before syncing the selected corpora, under normal shell/network permissions.
@@ -174,7 +175,7 @@ entry to object form, keeping its current target:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": [{
-    "package": "github:VanaMartin/opencode-repo-search#main",
+    "package": "github:VanaMartin/opencode-repo-search#v0.1.0-rc.2",
     "options": { "checkUpdates": false }
   }]
 }
@@ -185,7 +186,7 @@ extra sync check and notices, not OpenCode's own background update checking.
 
 ## Using linked worktrees
 
-Use an updated native plugin, **newer than rc.1**, loaded globally or through
+Use native plugin **0.1.0-rc.2 or newer**, loaded globally or through
 configuration available in every destination. Restart existing OpenCode locations
 after upgrading. A private copied loader in one checkout is not inherited by
 another worktree.
@@ -263,7 +264,7 @@ and [troubleshooting](https://vanamartin.github.io/opencode-repo-search/troubles
 
 ## Add or broaden a corpus
 
-On current `main`, describe the purpose and paths in natural language:
+With `0.1.0-rc.2` or newer, describe the purpose and paths in natural language:
 
 ```text
 /search-corpus-add Scientific paper notes in docs/papers; propose a papers corpus

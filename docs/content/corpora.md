@@ -20,7 +20,7 @@ each needs a distinct MCP server name.
 
 ## Natural-language commands
 
-These commands are on current `main`, **newer than the rc.1 tag**:
+These commands are available in **0.1.0-rc.2 or newer**:
 
 ```text
 /search-corpus-add Scientific paper notes in docs/papers; propose a papers corpus
