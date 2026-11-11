@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import AsyncExitStack
 from pathlib import Path
 
+import lancedb
 import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -431,6 +432,123 @@ def test_first_index_progress_is_distinct_from_query_readiness(repos, tmp_path, 
     assert status["readiness"] == "ready" and status["ready_for_queries"]
     assert status["refresh"]["phase"] == "complete"
     assert status["refresh"]["embedded"] == status["refresh"]["embeddings_total"]
+
+
+@pytest.fixture
+def paginated_database(tmp_path):
+    path = tmp_path / "db"
+    db = lancedb.connect(str(path))
+    for index in range(12):
+        db.create_table(f"aaa_retained_{index:02d}", data=[{"value": index}])
+    assert len(db.table_names()) == 10
+    return path, db
+
+
+@pytest.mark.parametrize("damage", [None, "version", "rows", "missing"])
+def test_open_published_generation_beyond_first_page(paginated_database, monkeypatch, damage):
+    path, db = paginated_database
+    table = db.create_table("zz_published_generation", data=[{"value": 1}])
+    table.add([{"value": 2}])
+    manifest = {
+        "published_table": table.name,
+        "table_version": table.version,
+        "chunks": table.count_rows(),
+    }
+    assert manifest["table_version"] == 2
+    assert table.name not in db.table_names()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Generation validation must open the exact table, not list a page")
+
+    monkeypatch.setattr(type(db), "table_names", forbidden)
+    if damage == "version":
+        manifest["table_version"] += 1
+        message = "externally modified"
+    elif damage == "rows":
+        manifest["chunks"] += 1
+        message = "unexpected row count"
+    elif damage == "missing":
+        manifest["published_table"] = "zz_missing_generation"
+        message = "Published generation is absent"
+    else:
+        opened = core.open_published(path, manifest)
+        assert opened.version == manifest["table_version"]
+        assert opened.to_arrow().to_pylist() == [{"value": 1}, {"value": 2}]
+        return
+    with pytest.raises(ValueError, match=message):
+        core.open_published(path, manifest)
+
+
+def test_refresh_publishes_and_reuses_generations_beyond_first_page(repos, paginated_database):
+    author, worker, _ = repos
+    source = MainSource.discover(worker)
+    path, db = paginated_database
+    core.ensure_main(source, path, source.table, force=True)
+    old = core.read_manifest(path, source.table)
+    assert old["published_table"] not in db.table_names()
+    assert core.status(source, path, source.table)["ready_for_queries"]
+
+    write(
+        author,
+        "src/solver.py",
+        'def solve(value):\n    """Newestgenerationmarker."""\n    return value * 3\n',
+    )
+    newest = commit(author)
+    git(author, "push", "-q", "origin", "main")
+    core.ensure_main(source, path, source.table, force=True)
+    current = core.read_manifest(path, source.table)
+    assert current["published_table"] != old["published_table"]
+    assert current["published_table"] not in db.table_names()
+    assert current["source_commit"] == newest
+    assert core.open_published(path, old).count_rows() == old["chunks"]
+    result = core.query(source, path, source.table, "newestgenerationmarker", "fts", 5)
+    assert result["results"] and result["freshness"]["integrity"] == "complete"
+    assert result["freshness"]["upstream"]["state"] == "current"
+    assert result["freshness"]["source_commit"] == newest
+    unchanged = core.ensure_main(source, path, source.table, force=True)
+    assert unchanged["parsed_files"] == unchanged["new_embeddings"] == 0
+    assert core.read_manifest(path, source.table)["published_table"] == current["published_table"]
+
+
+def test_logical_table_collision_beyond_first_page_is_rejected(
+    repos, paginated_database, monkeypatch
+):
+    _, worker, _ = repos
+    source = MainSource.discover(worker)
+    path, db = paginated_database
+    db.create_table(source.table, data=[{"value": 1132}])
+    assert source.table not in db.table_names()
+    before = db.table_names(limit=100)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("A logical-name collision must be rejected before embedding or publication")
+
+    monkeypatch.setattr(core, "encode", forbidden)
+    with pytest.raises(ValueError, match="Logical name collides"):
+        core.ensure_main(source, path, source.table, force=True)
+    assert core.read_manifest(path, source.table) is None
+    assert db.table_names(limit=100) == before
+    assert db.open_table(source.table).to_arrow().to_pylist() == [{"value": 1132}]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("Cannot read table metadata"),
+        ValueError("Table 'another_generation' was not found"),
+        OSError("Permission denied"),
+    ],
+)
+def test_open_published_does_not_mask_unrelated_open_errors(tmp_path, monkeypatch, error):
+    class UnreadableDatabase:
+        def open_table(self, name):
+            raise error
+
+    monkeypatch.setattr(lancedb, "connect", lambda path: UnreadableDatabase())
+    manifest = {"published_table": "published_generation", "table_version": 2, "chunks": 1}
+    with pytest.raises(type(error)) as failure:
+        core.open_published(tmp_path / "db", manifest)
+    assert failure.value is error
 
 
 def test_failed_reference_refresh_keeps_snapshot_and_code_can_advance(repos, tmp_path):
