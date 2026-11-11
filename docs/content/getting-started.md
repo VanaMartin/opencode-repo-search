@@ -17,11 +17,11 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 The published release candidate is pinned and reproducible:
 
 ```sh
-opencode plugin add 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.1'
+opencode plugin add 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.2'
 ```
 
-For the latest merged features, including corpus add/update commands and the
-initialization checklist:
+The candidate includes corpus management, repository-private worktree settings
+and advisory update reporting. To follow development instead:
 
 ```sh
 opencode plugin add 'github:VanaMartin/opencode-repo-search#main'
@@ -30,6 +30,7 @@ opencode plugin add 'github:VanaMartin/opencode-repo-search#main'
 `main` is a moving development target; replace it with a reviewed full commit hash
 to pin a particular revision. Installing the package is global, but repository
 initialization remains explicit. It does not index every project.
+GitHub-tag installation does not require npm registry publication.
 
 ### Local artifacts
 
@@ -38,7 +39,7 @@ Build from a checkout or download the npm-format tarball from a GitHub release:
 ```sh
 npm pack
 npm install --prefix /path/to/plugin-cache --ignore-scripts --no-audit --no-fund \
-  ./opencode-repo-search-0.1.0-rc.1.tgz
+  ./opencode-repo-search-0.1.0-rc.2.tgz
 ```
 
 Configure the installed directory in your OpenCode user/project configuration:
@@ -84,7 +85,7 @@ guidance are preserved; Git cannot ignore files that are already tracked.
 
 ### Private settings across worktrees
 
-On current `main` (newer than rc.1), opt into repository-private scope:
+With `0.1.0-rc.2` or newer, opt into repository-private scope:
 
 ```text
 /search-init git-ignore --scope repository --dry-run
@@ -188,6 +189,7 @@ Do not omit the target unless you intend to check/update every package plugin.
 Updating a configured tag does not select a newer release tag. Exact npm versions
 and full Git commit hashes remain pinned. To change releases, replace the existing
 target in its owning `opencode.json(c)` rather than adding a duplicate entry.
+For example, replace `#v0.1.0-rc.1` with `#v0.1.0-rc.2` to adopt this candidate.
 Local-directory installations must be updated outside the package updater and
 restarted/reloaded. See [OpenCode plugin management](https://opencode.ai/v2/docs/plugins#manage).
 
@@ -204,7 +206,7 @@ prepared Python environment. Compatible embeddings are reused during reconciliat
 
 ### Update notices and opt-out
 
-On current `main` (newer than rc.1), `/search-sync` guides the agent through one
+Since `0.1.0-rc.2`, `/search-sync` guides the agent through one
 targeted native update check before syncing the selected corpora. It honors normal
 shell/network permissions; denial, missing CLI, offline access or check failure
 does not prevent sync. Pinning is respected, not interpreted as proof that no
@@ -222,7 +224,7 @@ entry with object form, preserving its target and unrelated configuration:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": [{
-    "package": "github:VanaMartin/opencode-repo-search#main",
+    "package": "github:VanaMartin/opencode-repo-search#v0.1.0-rc.2",
     "options": { "checkUpdates": false }
   }]
 }

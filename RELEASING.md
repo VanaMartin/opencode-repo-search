@@ -9,7 +9,7 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 1. Update `package.json`, `CHANGELOG.md` and the pinned installation examples in
    `README.md` on a release branch. Keep prereleases explicit, for example
-   `0.1.0-rc.1` with the tag `v0.1.0-rc.1`.
+   `0.1.0-rc.2` with the tag `v0.1.0-rc.2`.
 2. Run `sh verify.sh`, `npm test`, Ruff lint/format, syntax/license checks and
    `uv lock --project payload/.opencode/search --python 3.12 --check`.
 3. Open a release PR and obtain passing Linux/macOS and quality/bundle CI results.
@@ -22,7 +22,7 @@ Exercise actual Git-package installation with isolated OpenCode state:
 
 ```sh
 python3.12 tests/smoke_opencode.py --migration \
-  --git-package 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.1'
+  --git-package 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.2'
 ```
 
 Repeat against a local real-project source clone and a pinned source baseline:
@@ -30,7 +30,7 @@ Repeat against a local real-project source clone and a pinned source baseline:
 ```sh
 python3.12 tests/accept_project.py \
   --source /path/to/local/source-clone --commit BASELINE_COMMIT \
-  --git-package 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.1' \
+  --git-package 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.2' \
   --profile /path/to/customized/profiles.json \
   --query 'representative source concept' --expect-path src/example.py
 ```

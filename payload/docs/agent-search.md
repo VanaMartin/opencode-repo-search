@@ -83,7 +83,7 @@ release tag/full commit to a new release requires an explicit edit to the existi
 entry in its owning OpenCode configuration, not an additional plugin entry.
 Checking a configured pin does not discover later release tags.
 
-On current `main` (newer than rc.1), native `/search-sync` supplies an optional
+Since `0.1.0-rc.2`, native `/search-sync` supplies an optional
 targeted check instruction by default. Only when that instruction is present,
 run the native check once before syncing any selected corpus, in the current
 project directory and under normal shell/network permissions. Bound the optional
@@ -113,7 +113,7 @@ do not reinitialize projects. Compatible index identities/embeddings are reused.
 
 ### Private settings across worktrees
 
-On current `main` (newer than rc.1), opt in with:
+With `0.1.0-rc.2` or newer, opt in with:
 
 ```text
 /search-init git-ignore --scope repository --dry-run

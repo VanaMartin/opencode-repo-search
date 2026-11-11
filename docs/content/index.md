@@ -40,10 +40,10 @@ connections and worktrees share a daemon/model per resolved database.
    when you need to inspect provenance, refresh or storage.
 
 !!! note "These docs track main"
-    The published candidate is **0.1.0-rc.1**. Corpus add/update commands and improved
-    initialization guidance and repository-private worktree scope are newer than
-    that immutable tag. Install `main` or a
-    reviewed commit to try those features; npm registry publication is pending.
+    The published candidate is **0.1.0-rc.2**, including corpus management,
+    repository-private worktree settings, exact-name generation validation and
+    advisory update reporting. Install its immutable GitHub tag; npm registry
+    publication remains separate. Use `main` only to follow development.
 
 ## The search contract
 
