@@ -10,6 +10,8 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 - Add a preview-first maintainer script to promote a validated release candidate
   to the floating `latest` Git tag, with an explicit leased push and no local-ref,
   worktree or immutable version-tag changes.
+- Prevent an in-flight MCP mount/heartbeat from restoring its lease after unmount,
+  fixing a shutdown race exposed by the macOS integration suite.
 
 ## 0.1.0-rc.2
 

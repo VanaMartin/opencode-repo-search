@@ -56,6 +56,7 @@ class SearchService:
         self.idle_timeout = idle_timeout
         self.implementation = implementation_id()
         self.corpora: dict[str, Corpus] = {}
+        self.pending_mounts: dict[str, set[object]] = {}
         self.active_requests = 0
         self.last_used = time.monotonic()
         self.stop = asyncio.Event()
@@ -100,23 +101,36 @@ class SearchService:
         return source
 
     async def register(self, mount: dict) -> tuple[MainSource, Corpus]:
-        source = await self.resolve(mount)
-        table = mount["table"]
-        corpus = self.corpora.setdefault(table, Corpus(table, source.owner))
-        if corpus.owner != source.owner:
-            raise ValueError("Corpus belongs to a different upstream or profile")
-        new = mount["client_id"] not in corpus.mounts
-        corpus.mounts[mount["client_id"]] = {
-            **mount,
-            "source": source,
-            "expires": time.monotonic() + LEASE,
-        }
-        if corpus.task is None or corpus.task.done():
-            corpus.first_attempt.clear()
-            corpus.task = asyncio.create_task(self.maintain(corpus))
-        elif new:
-            corpus.wake.set()
-        return source, corpus
+        client_id = mount["client_id"]
+        pending = self.pending_mounts.setdefault(client_id, set())
+        token = object()
+        pending.add(token)
+        try:
+            source = await self.resolve(mount)
+            # A cancelled proxy RPC can still be resolving on the server when
+            # unmount arrives. Do not let that request recreate a released lease.
+            if token not in pending:
+                raise RuntimeError("Search client unmounted during registration")
+            table = mount["table"]
+            corpus = self.corpora.setdefault(table, Corpus(table, source.owner))
+            if corpus.owner != source.owner:
+                raise ValueError("Corpus belongs to a different upstream or profile")
+            new = client_id not in corpus.mounts
+            corpus.mounts[client_id] = {
+                **mount,
+                "source": source,
+                "expires": time.monotonic() + LEASE,
+            }
+            if corpus.task is None or corpus.task.done():
+                corpus.first_attempt.clear()
+                corpus.task = asyncio.create_task(self.maintain(corpus))
+            elif new:
+                corpus.wake.set()
+            return source, corpus
+        finally:
+            pending.discard(token)
+            if not pending and self.pending_mounts.get(client_id) is pending:
+                del self.pending_mounts[client_id]
 
     async def maintain(self, corpus: Corpus) -> None:
         while corpus.mounts:
@@ -162,6 +176,9 @@ class SearchService:
                 "Shared search service runs different code/dependencies; stop it first"
             )
         if operation == "unmount":
+            pending = self.pending_mounts.pop(request["client_id"], None)
+            if pending is not None:
+                pending.clear()
             for corpus in self.corpora.values():
                 if corpus.mounts.pop(request["client_id"], None):
                     corpus.wake.set()
