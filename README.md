@@ -49,18 +49,20 @@ Requirements: **OpenCode V2 >=2.0.15, <3**, Git and [uv](https://docs.astral.sh/
 on **macOS or Linux**. `uv` can provision Python 3.12. First use needs network
 access for the locked dependencies/model and access to the configured Git upstream.
 
-Install the published release candidate:
+For a new installation, follow the promoted release channel:
 
 ```sh
-opencode plugin add 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.2'
+opencode plugin add 'github:VanaMartin/opencode-repo-search#latest'
 ```
 
-> **Release versus `main`:** the published candidate is `0.1.0-rc.2`, including
-> corpus management, repository-private worktree settings and advisory update
-> reporting. GitHub-tag installation works without npm registry publication, which
-> remains separate. These docs track `main`; use
-> `github:VanaMartin/opencode-repo-search#main` only to follow development, or pin
-> a reviewed commit. Restart OpenCode locations after upgrading.
+> **Release channel versus pins:** `latest` is a moving Git tag, advanced only
+> after release acceptance. It currently points to **`0.1.0-rc.2`** and can include
+> release candidates; it does not mean stable or automatically install updates.
+> For reproducibility, use `#v0.1.0-rc.2` or a reviewed full commit hash instead.
+> Use `#main` only to follow development. GitHub installation works without npm
+> registry publication. These docs track `main`; reload affected OpenCode locations
+> after upgrading. For an existing installation, [switch its entry once](#switch-existing-installations-to-latest)
+> rather than running `plugin add` again.
 
 ### 2. Initialize a repository
 
@@ -126,22 +128,43 @@ launcher path for direct CLI use.
 
 Use [OpenCode's existing updater](https://opencode.ai/v2/docs/plugins#manage),
 not a separate search-plugin upgrade command. Run `opencode plugin list` in the
-project and copy the **exact configured package target**. For a `main` installation:
+project and copy the **exact configured package target**. For the recommended
+`latest` channel:
 
 ```sh
-opencode plugin check 'github:VanaMartin/opencode-repo-search#main'
-opencode plugin update 'github:VanaMartin/opencode-repo-search#main'
+opencode plugin check 'github:VanaMartin/opencode-repo-search#latest'
+opencode plugin update 'github:VanaMartin/opencode-repo-search#latest'
 ```
 
-Omitting the target checks/updates other plugins too. A configured tag such as
-`#v0.1.0-rc.1` does not advance to another release; exact npm versions/full Git
-hashes stay pinned. To select a newer tag/commit, **replace the existing target**
-in the `opencode.json(c)` that owns it, for example changing `#v0.1.0-rc.1` to
-`#v0.1.0-rc.2`. Do not add a second entry or repeat
-`/search-init` in every project. Configured local directories are updated outside
-OpenCode's package updater and need a location restart/reload.
+Future promotions require only a native check/update and runtime reload/handover,
+not a new configured target each release. Omitting the target checks/updates other
+plugins too. If you deliberately track `#main` or a pin, use that exact target
+instead. Versioned tags such as `#v0.1.0-rc.2`, exact npm versions and full Git
+hashes remain pinned; they do not select later releases. Configured local
+directories are updated outside OpenCode's package updater.
 
-For a safe shared-runtime handover:
+### Switch existing installations to latest
+
+In the `opencode.json(c)` that owns the plugin entry, **replace its existing target
+once**:
+
+```diff
+- "github:VanaMartin/opencode-repo-search#v0.1.0-rc.2"
++ "github:VanaMartin/opencode-repo-search#latest"
+```
+
+The same replacement applies to rc.1 or a development target. For object-form
+entries, change only `package` and retain `options` and unrelated configuration.
+Do not add another entry, rerun `/search-init` or change repository policies/index
+identities. A global plugin entry is changed once per user/host, not in every
+project; explicit project-local entries must be changed in their owning config.
+Follow the handover below when switching incompatible runtimes.
+
+Maintainers advance the channel with the [release promotion procedure](RELEASING.md#promote-a-candidate-to-the-floating-latest-tag).
+
+### Shared-runtime handover
+
+For an upgrade that changes runtime compatibility:
 
 1. Record the current package launcher/database from `/search-status`. Disconnect
    affected search MCPs in **all loaded locations/worktrees sharing that database**,
@@ -153,7 +176,8 @@ For a safe shared-runtime handover:
 Project settings, databases and published indexes stay in place. Compatible
 embeddings are reused; new runtime fingerprints get separate prepared environments.
 Do not delete caches or indexes to upgrade, or reconnect outdated clients to a new
-incompatible daemon.
+incompatible daemon. Restarting OpenCode alone does not stop this separate search
+daemon. A compatibility mismatch is not a reason to reset Git or rebase a worktree.
 
 ### Advisory update reporting
 
@@ -175,7 +199,7 @@ entry to object form, keeping its current target:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": [{
-    "package": "github:VanaMartin/opencode-repo-search#v0.1.0-rc.2",
+    "package": "github:VanaMartin/opencode-repo-search#latest",
     "options": { "checkUpdates": false }
   }]
 }

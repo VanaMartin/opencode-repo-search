@@ -14,22 +14,29 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Install the native plugin
 
-The published release candidate is pinned and reproducible:
+For a new installation, follow the promoted release channel:
+
+```sh
+opencode plugin add 'github:VanaMartin/opencode-repo-search#latest'
+```
+
+`latest` is a moving Git tag advanced after release acceptance, currently pointing
+to **0.1.0-rc.2**. It can include release candidates and does not mean stable or
+automatically install updates. It includes corpus management, repository-private
+worktree settings and advisory update reporting.
+
+For a reproducible pin, choose the immutable version tag **instead**:
 
 ```sh
 opencode plugin add 'github:VanaMartin/opencode-repo-search#v0.1.0-rc.2'
 ```
 
-The candidate includes corpus management, repository-private worktree settings
-and advisory update reporting. To follow development instead:
+Use `github:VanaMartin/opencode-repo-search#main` only to follow development.
+Choose one target/loading method, not multiple plugin entries. Existing installs
+use the one-time target replacement in [Upgrade](#upgrade), not `plugin add` again.
 
-```sh
-opencode plugin add 'github:VanaMartin/opencode-repo-search#main'
-```
-
-`main` is a moving development target; replace it with a reviewed full commit hash
-to pin a particular revision. Installing the package is global, but repository
-initialization remains explicit. It does not index every project.
+Installing the package is global, but repository initialization remains explicit.
+It does not index every project. A reviewed full commit hash is another pin option.
 GitHub-tag installation does not require npm registry publication.
 
 ### Local artifacts
@@ -178,27 +185,36 @@ Inspect current source and local Git deltas before editing.
 ## Upgrade
 
 Use OpenCode's native package manager. Run `opencode plugin list` in the project
-and use the exact configured target; for a `main` installation:
+and use the exact configured target; for the recommended `latest` channel:
 
 ```sh
-opencode plugin check 'github:VanaMartin/opencode-repo-search#main'
-opencode plugin update 'github:VanaMartin/opencode-repo-search#main'
+opencode plugin check 'github:VanaMartin/opencode-repo-search#latest'
+opencode plugin update 'github:VanaMartin/opencode-repo-search#latest'
 ```
 
-Do not omit the target unless you intend to check/update every package plugin.
-Updating a configured tag does not select a newer release tag. Exact npm versions
-and full Git commit hashes remain pinned. To change releases, replace the existing
-target in its owning `opencode.json(c)` rather than adding a duplicate entry.
-For example, replace `#v0.1.0-rc.1` with `#v0.1.0-rc.2` to adopt this candidate.
+For existing pinned/development installations, switch **once**: replace the existing
+target in its owning `opencode.json(c)` with
+`github:VanaMartin/opencode-repo-search#latest`. For object-form entries, change only
+`package` and preserve `options` and unrelated configuration. Do not add a duplicate
+entry or repeat `/search-init`. A global entry changes once per user/host; explicit
+project entries must be changed in their owning configuration.
+
+After switching, subsequent promotions use the same native check/update target;
+there is no per-release configuration edit. Do not omit the target unless you
+intend to check/update every package plugin. If you intentionally keep a pin or
+`#main`, use that exact target instead. Versioned release tags, exact npm versions
+and full Git commit hashes stay pinned and do not select later releases.
 Local-directory installations must be updated outside the package updater and
 restarted/reloaded. See [OpenCode plugin management](https://opencode.ai/v2/docs/plugins#manage).
 
-Before changing the package/runtime, record the old launcher/database with
+Before switching/upgrading incompatible runtimes, record the old launcher/database with
 `/search-status`, disconnect affected MCPs across **all loaded locations/worktrees
 sharing each database**, then run `service stop --root WORKTREE` with the old
 package launcher. Update, restart/reload affected locations, reconnect, and check
 `/search-status` for readiness, currency and errors. Keep outdated clients
 disconnected until upgraded so they cannot restart an incompatible daemon.
+Restarting OpenCode alone does not stop this separate search daemon. A compatibility
+mismatch does not require a Git reset, worktree rebase or policy change.
 
 Settings and published indexes remain in place; do not repeat initialization or
 delete databases/runtime caches. A new package/runtime fingerprint gets a separate
@@ -224,7 +240,7 @@ entry with object form, preserving its target and unrelated configuration:
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": [{
-    "package": "github:VanaMartin/opencode-repo-search#v0.1.0-rc.2",
+    "package": "github:VanaMartin/opencode-repo-search#latest",
     "options": { "checkUpdates": false }
   }]
 }
