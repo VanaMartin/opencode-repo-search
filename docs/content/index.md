@@ -42,7 +42,9 @@ connections and worktrees share a daemon/model per resolved database.
 !!! note "These docs track main"
     The published candidate is **0.1.0-rc.2**, including corpus management,
     repository-private worktree settings, exact-name generation validation and
-    advisory update reporting. Install its immutable GitHub tag; npm registry
+    advisory update reporting. The recommended GitHub target is the floating
+    **`#latest`** tag, currently promoted to this candidate. It can include
+    prereleases; pin `#v0.1.0-rc.2` instead for reproducibility. npm registry
     publication remains separate. Use `main` only to follow development.
 
 ## The search contract

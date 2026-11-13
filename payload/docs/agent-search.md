@@ -79,9 +79,15 @@ The embedding model is loaded by the shared daemon, not by plugin setup.
 Use OpenCode's existing `opencode plugin list`, `opencode plugin check TARGET`
 and `opencode plugin update TARGET` commands. Use the exact configured target,
 never an unscoped check/update that includes unrelated plugins. Changing from a
-release tag/full commit to a new release requires an explicit edit to the existing
-entry in its owning OpenCode configuration, not an additional plugin entry.
+versioned release tag/full commit to a new release requires an explicit edit to
+the existing entry in its owning OpenCode configuration, not an additional entry.
 Checking a configured pin does not discover later release tags.
+
+The recommended `github:VanaMartin/opencode-repo-search#latest` target is a floating
+Git tag for accepted releases and can include release candidates. Existing users
+switch their owning plugin entry once, preserving options and avoiding duplicate
+registrations or project reinitialization. Subsequent promotions use native
+check/update with that same target, not per-release configuration edits.
 
 Since `0.1.0-rc.2`, native `/search-sync` supplies an optional
 targeted check instruction by default. Only when that instruction is present,

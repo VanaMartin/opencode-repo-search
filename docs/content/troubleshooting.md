@@ -86,8 +86,9 @@ a first troubleshooting step.
 
 The immutable rc.1 tag predates `/search-corpus-add`, `/search-corpus-update` and
 the improved initialization checklist. Replace the existing configured target with
-`github:VanaMartin/opencode-repo-search#v0.1.0-rc.2` or a newer reviewed revision,
-then restart OpenCode locations. Choose one plugin-loading method.
+`github:VanaMartin/opencode-repo-search#latest`, then reload OpenCode locations.
+Use `#v0.1.0-rc.2` or a reviewed full commit instead if you deliberately want a
+reproducible pin. Choose one plugin-loading method; do not add a duplicate entry.
 
 Copied installations still own their registrations until `/search-migrate` adopts
 them. The native corpus helper requires initialized/adopted package settings.

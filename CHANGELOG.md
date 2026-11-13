@@ -7,6 +7,8 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Unreleased
 
+- Default installation/update guidance to the promoted `#latest` Git tag, with a
+  one-time migration for pinned integrations and optional immutable version pins.
 - Add a preview-first maintainer script to promote a validated release candidate
   to the floating `latest` Git tag, with an explicit leased push and no local-ref,
   worktree or immutable version-tag changes.
