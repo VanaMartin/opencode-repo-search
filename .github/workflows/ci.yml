@@ -167,6 +167,7 @@ jobs:
               "payload/.opencode/search/registration.js",
               "tests/test_package.py", "tests/test_plugin.mjs", "tests/smoke_opencode.py",
               "tests/test_bundle.py", "examples/add-corpus.json", "examples/reference-note.md",
+              "scripts/promote_latest.py", "tests/test_release.py",
               "payload/.claude/skills/repo-knowledge-search/SKILL.md",
               "payload/.opencode/commands/search-status.md",
               "payload/.opencode/commands/search-sync.md",

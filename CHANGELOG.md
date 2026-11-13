@@ -7,6 +7,10 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Unreleased
 
+- Add a preview-first maintainer script to promote a validated release candidate
+  to the floating `latest` Git tag, with an explicit leased push and no local-ref,
+  worktree or immutable version-tag changes.
+
 ## 0.1.0-rc.2
 
 Second GitHub release candidate for OpenCode V2 >=2.0.15, <3 on macOS/Linux.
