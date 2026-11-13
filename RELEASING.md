@@ -65,6 +65,32 @@ machine paths and unrelated project content. Create a GitHub prerelease at the
 candidate tag with those three files, linking the passing CI and acceptance
 results. Candidate tags are immutable; use a new candidate number for fixes.
 
+## Promote a candidate to the floating latest tag
+
+After candidate acceptance and publication, preview and explicitly push:
+
+```sh
+python3.12 scripts/promote_latest.py v0.1.0-rc.2
+python3.12 scripts/promote_latest.py v0.1.0-rc.2 --push
+```
+
+The dependency-free script defaults to this repository and remote `origin`;
+`--repo PATH` and `--remote NAME` select another checkout/configured remote.
+It verifies the remote candidate and its package version, then creates/moves only
+the lightweight Git tag `latest`. An explicit lease rejects concurrent channel
+changes. Repeating the same promotion is a no-op. Preview may download Git objects
+but changes no refs or worktree files; local tags, branches, staged/dirty work and
+`FETCH_HEAD` remain untouched, even when pushing. Versioned release tags never move.
+The script does not run acceptance checks or publish/change a GitHub release,
+package version or npm dist-tag; promoting a candidate does not make it stable.
+
+The channel exists only after the first successful `--push`. Users can then
+configure `github:VanaMartin/opencode-repo-search#latest` once and use OpenCode's
+targeted native check/update commands for subsequent promotions. Existing pinned
+users replace their existing entry once, without adding another registration or
+reinitializing projects. Runtime reload/handover guidance still applies. GitHub's
+"Latest release" label is separate from this actual Git tag.
+
 ## Stable and npm publication
 
 After candidate acceptance/review, update to the stable version and installation

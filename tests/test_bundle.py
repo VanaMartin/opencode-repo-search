@@ -692,7 +692,133 @@ def test_six_installed_mcp_proxies_share_model_and_automatically_refresh(repos, 
             assert len({detail["service"]["pid"] for detail in details}) == 1
             assert all(detail["service"]["loaded_models"] == 1 for detail in details)
         health = probe(db)
-        assert all(value["mounts"] == 0 for value in health["corpora"].values()), health
+        assert all(value["mounts"] == 0 for value in health["corpora"].values()), json.dumps(
+            health, indent=2
+        )
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("mounted", [False, True], ids=["initial", "heartbeat"])
+@pytest.mark.parametrize("pending_count", [1, 2])
+def test_unmount_cancels_inflight_registration(
+    repos, tmp_path, monkeypatch, mounted, pending_count
+):
+    _, worker, _ = repos
+    source = MainSource.discover(worker)
+    service = SearchService(tmp_path / "db")
+    client = SearchClient(source, service.db_path, source.table, 300)
+
+    async def exercise():
+        blocked = False
+        count = 0
+        started, resume = asyncio.Event(), asyncio.Event()
+
+        async def resolve(_mount):
+            nonlocal count
+            if blocked:
+                count += 1
+                if count == pending_count:
+                    started.set()
+                await resume.wait()
+            return source
+
+        async def maintain(_corpus):
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(service, "resolve", resolve)
+        monkeypatch.setattr(service, "maintain", maintain)
+        request = {
+            "operation": "mount",
+            "implementation": service.implementation,
+            "mount": client.mount,
+        }
+        pending = []
+        try:
+            if mounted:
+                await service.dispatch(request)
+            blocked = True
+            pending = [asyncio.create_task(service.dispatch(request)) for _ in range(pending_count)]
+            await asyncio.wait_for(started.wait(), timeout=2)
+            await service.dispatch(
+                {
+                    "operation": "unmount",
+                    "implementation": service.implementation,
+                    "client_id": client.mount["client_id"],
+                }
+            )
+            resume.set()
+            results = await asyncio.gather(*pending, return_exceptions=True)
+            assert all(not corpus.mounts for corpus in service.corpora.values()), (
+                "A registration that started before unmount resurrected the released lease"
+            )
+            assert all(
+                isinstance(result, RuntimeError) and "unmounted" in str(result)
+                for result in results
+            )
+            assert service.pending_mounts == {}
+            # Cancellation applies to the in-flight requests, not future mounts.
+            blocked = False
+            await service.dispatch(request)
+            assert service.corpora[source.table].mounts.keys() == {client.mount["client_id"]}
+            assert service.pending_mounts == {}
+        finally:
+            resume.set()
+            await asyncio.gather(*pending, return_exceptions=True)
+            tasks = [corpus.task for corpus in service.corpora.values() if corpus.task]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(exercise())
+
+
+def test_unmount_preserves_other_clients_inflight_registration(repos, tmp_path, monkeypatch):
+    _, worker, _ = repos
+    source = MainSource.discover(worker)
+    service = SearchService(tmp_path / "db")
+    clients = [SearchClient(source, service.db_path, source.table, 300) for _ in range(2)]
+
+    async def exercise():
+        count = 0
+        started, resume = asyncio.Event(), asyncio.Event()
+
+        async def resolve(_mount):
+            nonlocal count
+            count += 1
+            if count == len(clients):
+                started.set()
+            await resume.wait()
+            return source
+
+        async def maintain(_corpus):
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(service, "resolve", resolve)
+        monkeypatch.setattr(service, "maintain", maintain)
+        pending = [asyncio.create_task(service.register(client.mount)) for client in clients]
+        try:
+            await asyncio.wait_for(started.wait(), timeout=2)
+            await service.dispatch(
+                {
+                    "operation": "unmount",
+                    "implementation": service.implementation,
+                    "client_id": clients[0].mount["client_id"],
+                }
+            )
+            resume.set()
+            results = await asyncio.gather(*pending, return_exceptions=True)
+            assert isinstance(results[0], RuntimeError) and "unmounted" in str(results[0])
+            assert results[1][0] is source
+            assert service.corpora[source.table].mounts.keys() == {clients[1].mount["client_id"]}
+            assert service.pending_mounts == {}
+        finally:
+            resume.set()
+            await asyncio.gather(*pending, return_exceptions=True)
+            tasks = [corpus.task for corpus in service.corpora.values() if corpus.task]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     asyncio.run(exercise())
 
