@@ -18,18 +18,24 @@ and cross-worktree advertisement/attachment are separate future work.
 - [x] Test branch switching/advancement, detached refs, staged/dirty/untracked
       exclusion, unsupported refs, symlinks/submodules and real linked worktrees.
 
-The provider is an internal foundation only. No local registry, indexing command
-or MCP surface is available until the following tasks are implemented.
+The provider and registry below are internal foundations only. No local indexing
+command or MCP surface is available until the following tasks are implemented.
 
 ## 2. Independent worktree-private registry
 
-- [ ] Resolve per-worktree Git metadata; create a stable worktree UUID only on apply.
-- [ ] Add schema/validation, atomic publication, locking and immutable collection IDs.
-- [ ] Capture standalone local policy and database/model selection, never editing
+- [x] Resolve per-worktree Git metadata; create a stable worktree UUID only on apply.
+- [x] Add schema/validation, atomic publication, locking and immutable collection IDs.
+- [x] Capture standalone local policy and database/model selection, never editing
       ordinary profiles or changing normal corpus identities.
-- [ ] Implement create/list/status and side-effect-free previews with file/size counts.
-- [ ] Test same names across worktrees/projects, conflicting/stale edits, corrupted
+- [x] Implement internal create/list/status and read-only previews with file/size counts.
+- [x] Test same names across worktrees/projects, conflicting/stale edits, corrupted
       metadata and exact preservation of Git/settings/index state.
+
+The native-default adapter captures the configured embedding/database without
+pinning ordinary policy. With no native setup, it uses bundled embedding defaults
+and a database identity derived from Git common metadata. Registries contain only
+metadata; publication/readiness is explicitly not checked at this stage. Launcher
+dispatch and user-facing command/MCP registration remain in task 4.
 
 ## 3. Manual indexing and query dispatch
 

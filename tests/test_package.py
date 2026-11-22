@@ -55,10 +55,13 @@ def package(tmp_path_factory):
         "plugin/corpora.py",
         "plugin/configuration.py",
         "plugin/configuration.js",
+        "plugin/local_collections.py",
         "payload/.opencode/search/registration.js",
         "payload/.opencode/search/uv.lock",
         "payload/.opencode/search/pyproject.toml",
         "payload/.opencode/search/repo_search/core.py",
+        "payload/.opencode/search/repo_search/local_source.py",
+        "payload/.opencode/search/repo_search/local_registry.py",
         "payload/docs/agent-search.md",
         "payload/.claude/skills/repo-knowledge-search/SKILL.md",
     }

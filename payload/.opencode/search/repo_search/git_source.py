@@ -48,8 +48,8 @@ def pin_profile(root: Path, profile: dict) -> str:
     return digest
 
 
-def git(root: Path, *args: str) -> bytes:
-    return subprocess.check_output(["git", "-C", str(root), *args])
+def git(root: Path, *args: str, env: dict | None = None) -> bytes:
+    return subprocess.check_output(["git", "-C", str(root), *args], env=env)
 
 
 def repository_id(url: str, root: Path) -> str:
@@ -80,13 +80,14 @@ def repository_id(url: str, root: Path) -> str:
     return f"{host}/{path}"
 
 
-def read_blobs(root: Path, oids: list[str]) -> dict[str, bytes]:
+def read_blobs(root: Path, oids: list[str], *, env: dict | None = None) -> dict[str, bytes]:
     """Batch object reads; paths, filters, and dirty files never supply source bytes."""
     if not oids:
         return {}
     data = subprocess.check_output(
         ["git", "-C", str(root), "cat-file", "--batch"],
         input="".join(oid + "\n" for oid in oids).encode(),
+        env=env,
     )
     result = {}
     offset = 0
@@ -101,11 +102,11 @@ def read_blobs(root: Path, oids: list[str]) -> dict[str, bytes]:
     return result
 
 
-def read_tree(root: Path, commit: str) -> tuple[str, dict[str, str]]:
+def read_tree(root: Path, commit: str, *, env: dict | None = None) -> tuple[str, dict[str, str]]:
     """Enumerate regular blobs from an exact committed tree, excluding links."""
-    tree = git(root, "rev-parse", f"{commit}^{{tree}}").decode().strip()
+    tree = git(root, "rev-parse", f"{commit}^{{tree}}", env=env).decode().strip()
     blobs = {}
-    for entry in git(root, "ls-tree", "-r", "-z", commit).split(b"\0"):
+    for entry in git(root, "ls-tree", "-r", "-z", commit, env=env).split(b"\0"):
         if not entry:
             continue
         metadata, path = entry.split(b"\t", 1)

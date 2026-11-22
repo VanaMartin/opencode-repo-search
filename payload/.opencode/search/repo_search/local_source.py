@@ -6,6 +6,7 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -14,9 +15,18 @@ from pathlib import Path
 from repo_search.git_source import read_tree
 
 
+def local_environment() -> dict:
+    """Partial clones must report missing objects, not lazily fetch during preview."""
+    return {**os.environ, "GIT_NO_LAZY_FETCH": "1", "GIT_TERMINAL_PROMPT": "0"}
+
+
 def command(root: Path, *arguments: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-C", str(root), *arguments], capture_output=True, text=True, check=False
+        ["git", "-C", str(root), *arguments],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=local_environment(),
     )
 
 
@@ -79,5 +89,5 @@ class LocalRevision:
     def snapshot(self) -> LocalGitSnapshot:
         """Resolve once, then enumerate only that committed tree without fetching."""
         commit = resolve_commit(self.root, self.ref)
-        tree, blobs = read_tree(self.root, commit)
+        tree, blobs = read_tree(self.root, commit, env=local_environment())
         return LocalGitSnapshot(self.root, self.ref, commit, tree, blobs)

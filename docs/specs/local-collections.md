@@ -93,6 +93,15 @@ worktree UUID, source binding, independent profile/policy hash, database and
 lifecycle state. Paths and configuration revisions must be validated on every
 mutating operation. Never put this registry or model/index data in tracked config.
 
+The initial internal registry uses one atomic `registry.json` containing ownership
+and independent inline policy snapshots; no separately published policy file can
+get ahead of its registry. Names use 1–64 lowercase letters, digits, underscores
+or hyphens, starting with a letter. Preview revisions bind the exact committed
+selection, local policy, database, effective configuration and prior registry.
+Apply rechecks the revision under a worktree-specific lock. Corrupted/wrong-owner
+metadata and symlinked metadata paths fail closed. Partial clones report missing
+Git objects instead of lazily fetching them during discovery or preview.
+
 When ordinary search is configured, creation may capture that resolved database
 and embedding specification without editing its profile. Otherwise select an
 isolated project default from resolved Git-common identity. Persist the selected
