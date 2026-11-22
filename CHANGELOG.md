@@ -7,6 +7,13 @@ License: https://github.com/VanaMartin/opencode-repo-search/blob/main/LICENSE
 
 ## Unreleased
 
+- Add an internal worktree-private local collection registry with immutable policy
+  capture, explicit revision-checked creation and read-only previews/inspection.
+  Native defaults can be captured without changing or pinning ordinary policy;
+  local indexing, launcher commands and MCP registration remain unavailable.
+- Add an internal read-only local Git revision snapshot provider as a foundation
+  for opt-in worktree-local collections. Local commands and MCP registration are
+  not yet available; ordinary upstream indexing remains unchanged.
 - Default installation/update guidance to the promoted `#latest` Git tag, with a
   one-time migration for pinned integrations and optional immutable version pins.
 - Add a preview-first maintainer script to promote a validated release candidate
