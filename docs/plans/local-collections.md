@@ -12,11 +12,14 @@ and cross-worktree advertisement/attachment are separate future work.
 
 ## 1. Local revision snapshot foundation
 
-- [ ] Add a read-only provider binding HEAD to a local branch or detached commit.
-- [ ] Snapshot exact regular Git blobs without fetch, checkout, stage or commit.
-- [ ] Share tree enumeration with upstream snapshots without changing their behavior.
-- [ ] Test branch switching/advancement, detached refs, staged/dirty/untracked
+- [x] Add a read-only provider binding HEAD to a local branch or detached commit.
+- [x] Snapshot exact regular Git blobs without fetch, checkout, stage or commit.
+- [x] Share tree enumeration with upstream snapshots without changing their behavior.
+- [x] Test branch switching/advancement, detached refs, staged/dirty/untracked
       exclusion, unsupported refs, symlinks/submodules and real linked worktrees.
+
+The provider is an internal foundation only. No local registry, indexing command
+or MCP surface is available until the following tasks are implemented.
 
 ## 2. Independent worktree-private registry
 

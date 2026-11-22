@@ -101,6 +101,20 @@ def read_blobs(root: Path, oids: list[str]) -> dict[str, bytes]:
     return result
 
 
+def read_tree(root: Path, commit: str) -> tuple[str, dict[str, str]]:
+    """Enumerate regular blobs from an exact committed tree, excluding links."""
+    tree = git(root, "rev-parse", f"{commit}^{{tree}}").decode().strip()
+    blobs = {}
+    for entry in git(root, "ls-tree", "-r", "-z", commit).split(b"\0"):
+        if not entry:
+            continue
+        metadata, path = entry.split(b"\t", 1)
+        mode, kind, oid = metadata.split()
+        if kind == b"blob" and mode in {b"100644", b"100755"}:
+            blobs[path.decode("utf-8")] = oid.decode()
+    return tree, blobs
+
+
 @dataclass(frozen=True)
 class MainSource:
     root: Path
@@ -197,15 +211,7 @@ class MainSource:
         if repository_id(url, self.root) != self.repo_id:
             raise ValueError("Configured upstream changed during fetch")
         commit = git(self.root, "rev-parse", f"{self.ref}^{{commit}}").decode().strip()
-        tree = git(self.root, "rev-parse", f"{commit}^{{tree}}").decode().strip()
-        blobs = {}
-        for entry in git(self.root, "ls-tree", "-r", "-z", commit).split(b"\0"):
-            if not entry:
-                continue
-            metadata, path = entry.split(b"\t", 1)
-            mode, kind, oid = metadata.split()
-            if kind == b"blob" and mode in {b"100644", b"100755"}:
-                blobs[path.decode("utf-8")] = oid.decode()
+        tree, blobs = read_tree(self.root, commit)
         if self.policy_hash:
             policy = (policy_store(self.root) / (self.policy_hash + ".json")).read_bytes()
             if hashlib.sha256(policy).hexdigest() != self.policy_hash:
